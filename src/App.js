@@ -8,62 +8,80 @@ const WEAVIATE_API_KEY = process.env.REACT_APP_WEAVIATE_API_KEY;
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 
 // ===== Kissflow integration config =====
-const KF_POPUP_ID = "Popup_kMvLNHW_ys";
+const KF_POPUP_ID = "Popup_RfPa09F_CO";
 
-// ===== Suggested Questions (Case-based) =====
-const SUGGESTED_QUESTIONS = ["อุปกรณ์พัง", "ระบบล่ม", "ปัญหาการเชื่อมต่อ"];
+// ===== Suggested Questions (HR-based) =====
+const SUGGESTED_QUESTIONS = [
+  "นโยบายลาพักร้อน",
+  "สิทธิประโยชน์พนักงาน",
+  "ขั้นตอนการขออนุญาต",
+];
 
-// ===== Case Solution JSON Schema (MANDATORY) =====
-const CASE_SOLUTION_SCHEMA = {
-  title: "CaseSolutionResponse",
+// ===== HR Document Search JSON Schema (MANDATORY) =====
+const HR_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
-    hasSimilarCase: { type: "boolean" },
-    solution: { type: "string" },
-    referenceCaseTitle: {
+    hasRelevantDocument: {
+      type: "boolean",
+      description: "Whether relevant documents were found",
+    },
+    answer: {
+      type: "string",
+      description: "The answer to the employee's question in Thai",
+    },
+    referenceDocuments: {
       type: "array",
+      description: "List of relevant documents",
       items: {
         type: "object",
         properties: {
-          caseNumber: { type: "string" },
-          caseTitle: { type: "string" },
+          instanceID: {
+            type: "string",
+            description: "The unique instance ID of the document",
+          },
+          documentTopic: {
+            type: "string",
+            description: "The topic of the document",
+          },
+          documentDescription: {
+            type: "string",
+            description: "Brief description of the document",
+          },
         },
-        required: ["caseNumber", "caseTitle"],
-        additionalProperties: false,
+        required: ["instanceID", "documentTopic"],
       },
     },
   },
-  required: ["hasSimilarCase", "solution", "referenceCaseTitle"],
-  additionalProperties: false,
+  required: ["hasRelevantDocument", "answer", "referenceDocuments"],
 };
 
 // ===== System Prompt (LLM MUST OUTPUT THAI) =====
-const SYSTEM_PROMPT = `คุณคือผู้ช่วยสนับสนุน (Support Assistant) สำหรับองค์กร
-หน้าที่: วิเคราะห์ปัญหาของผู้ใช้และให้คำแนะนำการแก้ปัญหาโดยอ้างอิงจากฐานความรู้
+const SYSTEM_PROMPT = `คุณคือผู้ช่วย HR (HR Assistant) สำหรับองค์กร
+หน้าที่: ตอบคำถามของพนักงานเกี่ยวกับนโยบาย สิทธิประโยชน์ และระเบียบต่างๆของบริษัท โดยอ้างอิงจากเอกสาร HR
 
 【วิธีการตอบ】
 1. อ่านประวัติการสนทนา (conversation history) เพื่อเข้าใจ context
-2. ตรวจสอบ Knowledge Base - หากมีเคสคล้ายกัน ให้ใช้เป็นอ้างอิง
-3. เขียน solution ที่เป็นคำแนะนำเชิงปฏิบัติ (actionable advice)
+2. ตรวจสอบ Knowledge Base - หากมีเอกสารที่เกี่ยวข้อง ให้ใช้เป็นอ้างอิง
+3. เขียนคำตอบที่ชัดเจน และเป็นประโยชน์ต่อพนักงาน
 4. ห้ามเดา - ทั้งหมดต้องเป็นไทยเท่านั้น
 
 【เงื่อนไข】
-- Respond naturally like a human support agent
-- Use conversation context to provide relevant solutions
-- If similar cases exist → hasSimilarCase = true
-- If no similar cases → hasSimilarCase = false, solution = "ยังไม่เคยพบเคสนี้ ไม่สามารถให้คำตอบได้"
-- Never start with: "พบเคสที่คล้ายกัน", "จากข้อมูลใน KB", "อ้างอิงจากเคส"
+- Respond naturally like a professional HR consultant
+- Use conversation context to provide relevant information
+- If relevant documents exist → hasRelevantDocument = true
+- If no relevant documents → hasRelevantDocument = false, answer = "ขออภัย ไม่พบเอกสารที่เกี่ยวข้องกับคำถามของคุณ กรุณาติดต่อแผนก HR"
+- Never start with: "พบเอกสาร", "จากข้อมูลใน KB", "อ้างอิงจากเอกสาร"
 - Output MUST be valid JSON immediately`;
 
 // ===== Weaviate Collection Configuration =====
-const WEAVIATE_COLLECTION = "CaseSolutionKnowledgeBase";
+const WEAVIATE_COLLECTION = "HRdocUpload";
 const WEAVIATE_FIELDS = `
-  caseNumber
-  caseTitle
-  caseType
-  caseDescription
-  solutionDescription
   instanceID
+  documentDetail
+  requesterName
+  documentDescription
+  requesterEmail
+  documentTopic
   _additional {
     certainty
   }
@@ -80,16 +98,16 @@ const safeJson = (x) => {
 
 /**
  * Transform Weaviate results into cleanedKnowledgeBase format
- * Structure: { caseNumber, caseTitle, caseType, caseDescription, solutionDescription, instanceID, certainty }
+ * Structure: { instanceID, documentDetail, requesterName, documentDescription, requesterEmail, documentTopic, certainty }
  */
 const transformToCleanedKB = (results = []) => {
   return results.map((item) => ({
-    caseNumber: item.caseNumber || "",
-    caseTitle: item.caseTitle || "",
-    caseType: item.caseType || "",
-    caseDescription: item.caseDescription || "",
-    solutionDescription: item.solutionDescription || "",
     instanceID: item.instanceID || "",
+    documentDetail: item.documentDetail || "",
+    requesterName: item.requesterName || "",
+    documentDescription: item.documentDescription || "",
+    requesterEmail: item.requesterEmail || "",
+    documentTopic: item.documentTopic || "",
     certainty: item._additional?.certainty || 0,
   }));
 };
@@ -152,20 +170,20 @@ function App() {
   };
 
   /**
-   * Main Case Solver Flow with Conversation Context:
+   * Main HR Document Search Flow with Conversation Context:
    * - Takes full conversation history for LLM reasoning
    * - LLM can understand context from previous messages
-   * - Step 1: Receive user message (e.g., "อุปกรณ์พัง", "ระบบล่ม")
+   * - Step 1: Receive user question (e.g., "นโยบายลาพักร้อน", "สิทธิประโยชน์พนักงาน")
    * - Step 2: Generate embedding vector from user input
    * - Step 3: Query Weaviate with nearVector search (topK=5)
    * - Step 4: Transform results into cleanedKnowledgeBase
-   * - Step 5: Build instruction prompt with case info + knowledge base
+   * - Step 5: Build instruction prompt with document info
    * - Step 6: Call LLM with systemPrompt & instructionPrompt & full history
-   * - Step 7: Return structured CaseSolutionResponse (JSON schema)
+   * - Step 7: Return structured HRDocumentResponse (JSON schema)
    */
   async function handleQuestion(question, chatHistory) {
     try {
-      console.log("[Case Solver] Processing:", question.substring(0, 40));
+      console.log("[HR Assistant] Processing:", question.substring(0, 40));
 
       // Step 1: Generate embedding from user input
       const embedding = await generateEmbeddingForCase(question);
@@ -175,7 +193,9 @@ function App() {
 
       // Step 3: Transform results into cleanedKnowledgeBase
       const cleanedKB = transformToCleanedKB(weaviateResults);
-      console.log(`[Case Solver] Found ${cleanedKB.length} similar cases`);
+      console.log(
+        `[HR Assistant] Found ${cleanedKB.length} relevant documents`
+      );
 
       // Step 4: Build optimized instruction prompt with context awareness
       // Use recent user questions for better context understanding (faster response)
@@ -185,51 +205,58 @@ function App() {
         .map((m) => m.text)
         .join(" -> ");
 
-      const instructionPrompt = `【User Question】
+      const instructionPrompt = `【Employee Question】
 ${question}${
         recentQuestions ? `\n【Context from previous】: ${recentQuestions}` : ""
       }
 
-【Available Similar Cases】
+【Available HR Documents】
 ${
   cleanedKB.length > 0
     ? cleanedKB
         .map(
           (c, i) =>
-            `${i + 1}. Case ${c.caseNumber}: ${c.caseTitle}\n   Solution: ${
-              c.solutionDescription
-            }\n   Match: ${(c.certainty * 100).toFixed(0)}%`
+            `${i + 1}. ID: ${c.instanceID}, Topic: ${
+              c.documentTopic
+            }\n   Description: ${
+              c.documentDescription
+            }\n   Match Confidence: ${(c.certainty * 100).toFixed(0)}%`
         )
         .join("\n\n")
-    : "No matching cases found"
+    : "No matching documents found"
 }
 
-【Respond with】
-Analyze using conversation context. Return JSON with hasSimilarCase (bool), solution (Thai), referenceCaseTitle (cases)`;
+【Instructions】
+1. Answer the employee's question based on the available documents
+2. If documents found: hasRelevantDocument = true, provide Thai answer using document info
+3. If NO documents found: hasRelevantDocument = false, answer = "ขออภัย ไม่พบเอกสารที่เกี่ยวข้องกับคำถามของคุณ กรุณาติดต่อแผนก HR"
+4. For referenceDocuments: include only the instanceID, documentTopic, and documentDescription from the found documents
+5. Return ONLY valid JSON matching the schema, no additional text`;
 
-      // Step 5: Call LLM for case solution
-      const caseSolution = await generateCaseSolution(
+      // Step 5: Call LLM for HR response
+      const hrResponse = await generateHRResponse(
         instructionPrompt,
-        chatHistory
+        chatHistory,
+        cleanedKB
       );
 
       // Step 6: Validate and return response
-      console.log("[Case Solver] Response ready");
+      console.log("[HR Assistant] Response ready");
       return {
-        text: caseSolution.solution,
+        text: hrResponse.answer,
         sender: "ai",
         role: "assistant",
-        caseSolution: caseSolution,
+        hrResponse: hrResponse,
         knowledgeBase: cleanedKB,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[Case Solver Error]", msg);
+      console.error("[HR Assistant Error]", msg);
       return {
         text: `เกิดข้อผิดพลาด: ${msg}`,
         sender: "ai",
         role: "assistant",
-        caseSolution: null,
+        hrResponse: null,
         knowledgeBase: [],
       };
     }
@@ -314,13 +341,17 @@ Analyze using conversation context. Return JSON with hasSimilarCase (bool), solu
   }
 
   /**
-   * Call LLM for case solution with optimized context
+   * Call LLM for HR response with optimized context
    * - Uses recent conversation history (last 2 exchanges) for faster response
    * - System prompt + optimized instruction + context for fluent conversation
-   * - LLM MUST return JSON matching CaseSolutionResponse schema
+   * - LLM MUST return JSON matching HRDocumentResponse schema
    * - ALL LLM-generated content MUST be Thai
    */
-  async function generateCaseSolution(instructionPrompt, chatHistory) {
+  async function generateHRResponse(
+    instructionPrompt,
+    chatHistory,
+    cleanedKB = []
+  ) {
     // Optimize: Use only recent conversation (last 2 user messages) to reduce tokens
     const recentHistory = (chatHistory || [])
       .slice(-4) // Last 2 exchanges (user + assistant pairs)
@@ -330,6 +361,35 @@ Analyze using conversation context. Return JSON with hasSimilarCase (bool), solu
       }));
 
     try {
+      // Build instruction with JSON format requirement
+      const enhancedPrompt =
+        instructionPrompt +
+        `
+
+Return response in this exact JSON format:
+{
+  "hasRelevantDocument": boolean,
+  "answer": "Thai text answer here",
+  "referenceDocuments": [
+    {
+      "instanceID": "id here",
+      "documentTopic": "topic here",
+      "documentDescription": "description here"
+    }
+  ]
+}`;
+
+      const requestBody = {
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 1000,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          ...recentHistory,
+          { role: "user", content: enhancedPrompt },
+        ],
+      };
+
       const response = await fetch(
         "https://api.openai.com/v1/chat/completions",
         {
@@ -338,43 +398,44 @@ Analyze using conversation context. Return JSON with hasSimilarCase (bool), solu
             "Content-Type": "application/json",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
           },
-          body: JSON.stringify({
-            model: "gpt-4o-mini", // Use faster model for better response time
-            temperature: 0.2, // Lower temperature for more consistent output
-            max_tokens: 500, // Limit output length for faster response
-            messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              ...recentHistory, // Only recent context (not full history)
-              { role: "user", content: instructionPrompt },
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "case_solution_response",
-                schema: CASE_SOLUTION_SCHEMA,
-                strict: true,
-              },
-            },
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
 
       if (!response.ok) {
-        const body = await response.text();
+        const errorText = await response.text();
+        console.error(
+          "[HR Assistant] API Error Response:",
+          errorText,
+          "Status:",
+          response.status
+        );
         throw new Error(`LLM API error: ${response.status}`);
       }
 
       const data = await response.json();
       const jsonString = data.choices[0].message.content;
-      const parsedResponse = JSON.parse(jsonString);
+
+      // Extract JSON from response (in case there's extra text)
+      const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("Could not extract JSON from LLM response");
+      }
+
+      const parsedResponse = JSON.parse(jsonMatch[0]);
 
       // Validate required schema fields
       if (
-        !parsedResponse.hasOwnProperty("hasSimilarCase") ||
-        !parsedResponse.hasOwnProperty("solution") ||
-        !parsedResponse.hasOwnProperty("referenceCaseTitle")
+        !parsedResponse.hasOwnProperty("hasRelevantDocument") ||
+        !parsedResponse.hasOwnProperty("answer") ||
+        !parsedResponse.hasOwnProperty("referenceDocuments")
       ) {
         throw new Error("LLM response missing required fields");
+      }
+
+      // Ensure referenceDocuments is an array
+      if (!Array.isArray(parsedResponse.referenceDocuments)) {
+        parsedResponse.referenceDocuments = [];
       }
 
       return parsedResponse;
@@ -415,7 +476,7 @@ Analyze using conversation context. Return JSON with hasSimilarCase (bool), solu
   return (
     <div className="App">
       <div className="chat-header">
-        <div className="header-title">Nong Cassy AI Assistant</div>
+        <div className="header-title">HR AI Assistant</div>
         <button
           className="theme-toggle-btn"
           onClick={() => setIsDarkMode(!isDarkMode)}
@@ -476,7 +537,7 @@ Analyze using conversation context. Return JSON with hasSimilarCase (bool), solu
                   msg.knowledgeBase.length > 0 && (
                     <div className="refs-inline">
                       <div className="refs-inline-header">
-                        <strong>Related Cases</strong>
+                        <strong>Related Documents</strong>
                         <button
                           type="button"
                           className="refs-open-all"
@@ -499,11 +560,13 @@ Analyze using conversation context. Return JSON with hasSimilarCase (bool), solu
                           >
                             <div className="refs-inline-meta">
                               <div className="refs-inline-title">
-                                Case {i + 1} • {r.caseTitle || "Untitled"}
+                                Doc {i + 1} • {r.documentTopic || "Untitled"}
                               </div>
                               <div className="refs-inline-sub">
-                                ID: {r.caseNumber} • Certainty:{" "}
-                                {(r.certainty * 100).toFixed(1)}%
+                                {r.documentDescription && (
+                                  <>{r.documentDescription} •</>
+                                )}
+                                Certainty: {(r.certainty * 100).toFixed(1)}%
                               </div>
                             </div>
                             <button
