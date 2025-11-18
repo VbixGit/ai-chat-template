@@ -30,7 +30,13 @@ const KISSFLOW_FIELD_MAPPING = {
 };
 
 // ===== Suggested Questions =====
-const SUGGESTED_QUESTIONS = ["อุปกรณ์พัง", "ระบบล่ม", "ปัญหาการเชื่อมต่อ"];
+const SUGGESTED_QUESTIONS = [
+  "ขอปรับเปลี่ยนเวลาทำงาน",
+  "ไม่สามารถพิมพ์เอกสารได้",
+  "สินค้าที่ได้รับไม่ตรงตามที่สั่ง",
+  "ลืมรหัสผ่านเข้าสู่ระบบ",
+  "ต้องการยกเลิกการสมัครสมาชิก",
+];
 
 // ===== Case Solution JSON Schema =====
 const CASE_SOLUTION_SCHEMA = {
