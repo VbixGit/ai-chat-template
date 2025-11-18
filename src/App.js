@@ -553,15 +553,27 @@ function App() {
     }
   }
   // ===== Kissflow opener =====
-  async function openInKissflow(instanceIdsArray) {
-    const ids = (instanceIdsArray || [])
-      .map((s) => (s || "").trim())
-      .filter(Boolean);
-    if (!ids.length) {
-      alert("ไม่พบ instanceID สำหรับส่งไป Kissflow");
+  async function openInKissflow(instanceData) {
+    // instanceData: Object with _id and _activity_instance_id from creation response
+    // Maps to Kissflow popup parameters: crmpopupinsid and crmpopupatvid
+
+    let popupParameters = {};
+
+    if (typeof instanceData === "object" && instanceData !== null) {
+      // Map response fields to Kissflow popup parameter names
+      if (instanceData._id) {
+        popupParameters.crmpopupinsid = instanceData._id;
+      }
+      if (instanceData._activity_instance_id) {
+        popupParameters.crmpopupatvid = instanceData._activity_instance_id;
+      }
+    }
+
+    // Check if we have any parameters
+    if (Object.keys(popupParameters).length === 0) {
+      alert("ไม่พบข้อมูล instanceID สำหรับส่งไป Kissflow");
       return;
     }
-    const joined = ids.join(",");
 
     const kf = await getKf();
     if (!kf) {
@@ -572,8 +584,8 @@ function App() {
     }
 
     try {
-      console.log("instanceidreport:", joined);
-      await kf.app.page.openPopup(KF_POPUP_ID, { instanceidreport: joined });
+      console.log("[Kissflow] Opening popup with parameters:", popupParameters);
+      await kf.app.page.openPopup(KF_POPUP_ID, popupParameters);
     } catch (err) {
       console.error("Open popup failed:", err);
       alert("เปิด popup ไม่สำเร็จ: " + (err?.message || "unknown error"));
@@ -617,11 +629,11 @@ function App() {
       setIsTyping(false);
 
       // Open popup asynchronously without blocking chat
-      if (instanceId) {
-        console.log("[Kissflow] Opening popup with instanceId:", instanceId);
+      if (result._id || result._activity_instance_id) {
+        console.log("[Kissflow] Opening popup with result data:", result);
         // Use setTimeout to open popup after UI updates
         setTimeout(() => {
-          openInKissflow([instanceId]).catch((err) => {
+          openInKissflow(result).catch((err) => {
             console.error("[Kissflow] Background popup open error:", err);
           });
         }, 100);
