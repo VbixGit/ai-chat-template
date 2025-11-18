@@ -98,7 +98,6 @@ const transformToCleanedKB = (results = []) => {
  * Generate embedding from question using OpenAI API
  */
 async function generateQuestionEmbedding(question) {
-  console.log("Step 2: Embedding text using OpenAI...");
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
@@ -124,7 +123,6 @@ async function generateQuestionEmbedding(question) {
 
   const data = await response.json();
   const embedding = data.data[0].embedding;
-  console.log(`Step 3: Embedding created (length: ${embedding.length})`);
   return embedding;
 }
 
@@ -132,8 +130,6 @@ async function generateQuestionEmbedding(question) {
  * Search Weaviate for similar cases using semantic similarity
  */
 async function searchWeaviateForCases(embedding) {
-  console.log("Step 4: Searching Weaviate with semantic similarity...");
-
   const topK = 5;
   const query = {
     query: `
@@ -180,7 +176,6 @@ async function searchWeaviateForCases(embedding) {
   }
 
   const documents = data.data?.Get?.[WEAVIATE_COLLECTION] || [];
-  console.log(`Step 5: Found ${documents.length} similar cases`);
   return documents;
 }
 
@@ -188,7 +183,6 @@ async function searchWeaviateForCases(embedding) {
  * Generate answer from OpenAI using case context and chat history
  */
 async function generateAnswerFromOpenAI(context, question, chatHistory) {
-  console.log("Step 6: Generating answer with context using OpenAI...");
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
@@ -202,12 +196,17 @@ async function generateAnswerFromOpenAI(context, question, chatHistory) {
 - ตอบเป็นภาษาไทยเท่านั้น ไม่ต้องแปล
 - ถ้าไม่มีข้อมูลเพียงพอ ให้ระบุชัดว่า "ข้อมูลไม่เพียงพอ" หรือ "ต้องการข้อมูลเพิ่มเติม"
 - ไม่ต้องมี greeting, closing, หรือการสื่อสารแบบสังคม`;
-  const userPrompt = `Question: ${question}\n\nSimilar Cases Context:\n${context}`;
+
+  // Filter chatHistory to only include valid messages with role property
+  const validHistory = chatHistory.filter(
+    (msg) => msg && msg.role && msg.content
+  );
+  const recentHistory = validHistory.slice(-4); // Keep last 4 messages
 
   const messages = [
     { role: "system", content: systemPrompt },
-    ...chatHistory,
-    { role: "user", content: userPrompt },
+    ...recentHistory,
+    { role: "user", content: `Q: ${question}\n${context}` },
   ];
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -232,7 +231,6 @@ async function generateAnswerFromOpenAI(context, question, chatHistory) {
 
   const data = await response.json();
   const answer = data.choices[0].message.content.trim();
-  console.log(`Step 6: Generated answer: "${answer.substring(0, 100)}..."`);
   return answer;
 }
 
@@ -240,7 +238,6 @@ async function generateAnswerFromOpenAI(context, question, chatHistory) {
  * Generate structured case data for Kissflow from question, context, and answer
  */
 async function generateKissflowCaseData(question, context, answer) {
-  console.log("Step 7: Generating Kissflow case data using OpenAI...");
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
@@ -283,8 +280,6 @@ Based on the above information, generate the Kissflow case data in JSON format.`
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    console.error("Kissflow data generation failed:", errorData);
     // Return default case data if generation fails
     return {
       Case_Title: question.substring(0, 100),
@@ -321,10 +316,8 @@ Based on the above information, generate the Kissflow case data in JSON format.`
       caseData.Case_Type = "Customer Service"; // Default to Customer Service
     }
 
-    console.log("Step 7: Kissflow case data generated successfully");
     return caseData;
   } catch (err) {
-    console.error("Error parsing Kissflow case data:", err);
     // Return default case data on parse error
     return {
       Case_Title: question.substring(0, 100),
@@ -342,8 +335,6 @@ Based on the above information, generate the Kissflow case data in JSON format.`
  * IMPORTANT: Update KISSFLOW_FIELD_MAPPING with your actual Kissflow field IDs
  */
 async function sendKissflowCreateRequest(caseData, getKfFunc, getUserInfoFunc) {
-  console.log("[Kissflow SDK API] Creating new item with data:", caseData);
-
   try {
     // Get Kissflow SDK instance and user info using passed functions
     const kf = await getKfFunc();
@@ -366,9 +357,6 @@ async function sendKissflowCreateRequest(caseData, getKfFunc, getUserInfoFunc) {
       [KISSFLOW_FIELD_MAPPING.Requester_Email]: userInfo.email || "",
     };
 
-    console.log("[Kissflow SDK API] Payload:", payload);
-    console.log("[Kissflow SDK API] Account ID:", accountId);
-
     // Format: /process/{processVersion}/{accountId}/{processName}/batch/create/submit
     const apiEndpoint = `/process/2/${accountId}/${KISSFLOW_PROCESS_NAME}/create/submit`;
     const options = {
@@ -377,10 +365,8 @@ async function sendKissflowCreateRequest(caseData, getKfFunc, getUserInfoFunc) {
     };
 
     const result = await kf.api(apiEndpoint, options);
-    console.log("[Kissflow SDK API] Item created successfully:", result);
     return result;
   } catch (err) {
-    console.error("[Kissflow SDK API Error]", err);
     throw new Error(`Failed to create Kissflow item: ${err.message}`);
   }
 }
@@ -411,7 +397,6 @@ function App() {
       try {
         kfRef.current = await KFSDK.initialize();
       } catch (err) {
-        console.warn("KFSDK initialize failed:", err);
         kfRef.current = null;
       }
     }
@@ -434,10 +419,8 @@ function App() {
       const name = kf.user.Name || "";
       const email = kf.user.Email || "";
 
-      console.log("[Kissflow User Info]", { userId, accountId, name, email });
       return { userId, accountId, name, email };
     } catch (err) {
-      console.error("[Kissflow User Info Error]", err);
       throw new Error(`Failed to get user info: ${err.message}`);
     }
   }
@@ -477,14 +460,11 @@ function App() {
    */
   async function handleQuestion(question, chatHistory) {
     try {
-      console.log("[Case Solver] Processing:", question.substring(0, 40));
-
       // Step 1: Generate embedding
       const embedding = await generateQuestionEmbedding(question);
 
       // Step 2: Search Weaviate
       const docs = await searchWeaviateForCases(embedding);
-      console.log(`[Case Solver] Found ${docs.length} similar cases`);
 
       if (docs.length === 0) {
         return {
@@ -532,7 +512,6 @@ function App() {
         type: d.caseType,
       }));
 
-      console.log("[Case Solver] Response ready");
       return {
         text: answer,
         sender: "ai",
@@ -542,7 +521,6 @@ function App() {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[Case Solver Error]", msg);
       return {
         text: `เกิดข้อผิดพลาด: ${msg}`,
         sender: "ai",
@@ -584,10 +562,8 @@ function App() {
     }
 
     try {
-      console.log("[Kissflow] Opening popup with parameters:", popupParameters);
       await kf.app.page.openPopup(KF_POPUP_ID, popupParameters);
     } catch (err) {
-      console.error("Open popup failed:", err);
       alert("เปิด popup ไม่สำเร็จ: " + (err?.message || "unknown error"));
     }
   }
@@ -595,7 +571,6 @@ function App() {
   // ===== Kissflow Create New Item =====
   async function createNewItemInKissflow(kissflowCaseData) {
     try {
-      console.log("[Kissflow] Creating new item...", kissflowCaseData);
       setIsTyping(true);
 
       // Verify Kissflow SDK is available
@@ -613,7 +588,6 @@ function App() {
         getKf,
         getKissflowUserInfo
       );
-      console.log("[Kissflow] Item created successfully:", result);
 
       // Store created item data for future use
       setCreatedItemData(result);
@@ -630,18 +604,14 @@ function App() {
 
       // Open popup asynchronously without blocking chat
       if (result._id || result._activity_instance_id) {
-        console.log("[Kissflow] Opening popup with result data:", result);
         // Use setTimeout to open popup after UI updates
         setTimeout(() => {
-          openInKissflow(result).catch((err) => {
-            console.error("[Kissflow] Background popup open error:", err);
-          });
+          openInKissflow(result).catch(() => {});
         }, 100);
       }
 
       return result;
     } catch (err) {
-      console.error("[Kissflow Create Error]", err);
       alert(`❌ ไม่สามารถสร้าง New Item ได้:\n${err.message}`);
       setIsTyping(false);
       return null;
