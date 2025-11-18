@@ -497,14 +497,17 @@ function App() {
         chatHistory
       );
 
-      // Step 5: Generate Kissflow case data
-      const kissflowData = await generateKissflowCaseData(
-        question,
-        context,
-        answer
-      );
+      // Step 5: Check if response indicates insufficient data
+      const hasInsufficientData =
+        answer.includes("ข้อมูลไม่เพียงพอ") ||
+        answer.includes("ต้องการข้อมูลเพิ่มเติม");
 
-      // Step 6: Build citations
+      // Step 6: Generate Kissflow case data only if data is sufficient
+      const kissflowData = hasInsufficientData
+        ? null
+        : await generateKissflowCaseData(question, context, answer);
+
+      // Step 7: Build citations
       const citations = docs.map((d, i) => ({
         index: i + 1,
         title: d.caseTitle,
