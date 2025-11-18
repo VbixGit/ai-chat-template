@@ -390,6 +390,8 @@ body {
   align-items: center;
   margin-bottom: 10px;
   color: var(--text-color);
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .refs-inline-header strong {
@@ -402,6 +404,13 @@ body {
 
 [data-theme="dark"] .refs-inline-header strong {
   color: #aaa;
+}
+
+.refs-inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .refs-inline-list {
@@ -455,6 +464,36 @@ body {
 .refs-open-one:hover {
   background-color: #0d9169;
   box-shadow: 0 2px 6px rgba(16, 163, 127, 0.2);
+}
+
+.refs-create-new {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  background-color: #5c6bc0;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.refs-create-new:hover {
+  background-color: #3f51b5;
+  box-shadow: 0 2px 6px rgba(92, 107, 192, 0.3);
+  transform: translateY(-1px);
+}
+
+.refs-create-new:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .refs-create-new {
+  background-color: #5c6bc0;
+}
+
+[data-theme="dark"] .refs-create-new:hover {
+  background-color: #7986cb;
 }
 
 /* ===== Suggested Questions Styles (Next to Input) ===== */
