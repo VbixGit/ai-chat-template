@@ -585,13 +585,14 @@ function App() {
       // Verify Kissflow SDK is available
       const kf = await getKf();
       if (!kf) {
-        throw new Error(
+        setIsTyping(false);
+        alert(
           "Kissflow SDK not available. This feature must be accessed from within Kissflow."
         );
+        return null;
       }
 
       // Create item using native Kissflow SDK API
-      // Pass getKf and getKissflowUserInfo as parameters
       const result = await sendKissflowCreateRequest(
         kissflowCaseData,
         getKf,
@@ -601,19 +602,12 @@ function App() {
       // Store created item data for future use
       setCreatedItemData(result);
 
-      // Extract instance ID from result - Kissflow returns _id as the instance identifier
-      const instanceId = result._id || result.id || result.instanceID || null;
-      const successMessage = `✅ สร้าง New Item สำเร็จ\nID: ${
-        instanceId || "N/A"
-      }`;
-      alert(successMessage);
-
-      // Unlock chat immediately, open popup in background without waiting
+      // Unlock chat immediately
       setIsTyping(false);
 
-      // Open popup asynchronously without blocking chat
+      // Open Kissflow popup directly (no browser alert on success)
       if (result._id || result._activity_instance_id) {
-        // Use setTimeout to open popup after UI updates
+        // Use setTimeout to ensure UI updates before opening popup
         setTimeout(() => {
           openInKissflow(result).catch(() => {});
         }, 100);
@@ -621,8 +615,9 @@ function App() {
 
       return result;
     } catch (err) {
-      alert(`❌ ไม่สามารถสร้าง New Item ได้:\n${err.message}`);
+      // Show error alert only on failure
       setIsTyping(false);
+      alert(`❌ ไม่สามารถสร้าง New Item ได้:\n${err.message}`);
       return null;
     }
   }
