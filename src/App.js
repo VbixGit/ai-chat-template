@@ -11,6 +11,8 @@ const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 const KF_POPUP_ID = "Popup_RfPa09F_CO";
 
 const ENABLE_TOKEN_LOGGING = true;
+const ENABLE_STREAMING_EFFECT = true;
+const ENABLE_PROCESSING_ANIMATION = true;
 
 // ===== Suggested Questions (HR-based) =====
 const SUGGESTED_QUESTIONS = [
@@ -125,10 +127,31 @@ const transformToCleanedKB = (results = []) => {
   }));
 };
 
+const Typewriter = ({ text, speed = 10 }) => {
+  const [displayedText, setDisplayedText] = useState("");
+
+  useEffect(() => {
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i < text.length) {
+        setDisplayedText((prev) => prev + text.charAt(i));
+        i++;
+      } else {
+        clearInterval(timer);
+      }
+    }, speed);
+
+    return () => clearInterval(timer);
+  }, [text, speed]);
+
+  return <ReactMarkdown>{displayedText}</ReactMarkdown>;
+};
+
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const messagesEndRef = useRef(null);
   const kfRef = useRef(null);
@@ -180,6 +203,7 @@ function App() {
       setMessages((prev) => [...prev, aiResponse]);
     }
     setIsTyping(false);
+    setProcessingStep("");
   };
 
   const selectSuggestedQuestion = (question) => {
@@ -217,6 +241,7 @@ function App() {
       console.log("[1] Question Length:", question.length, "characters");
 
       // Step 0: Translate to English
+      setProcessingStep("Translating to English...");
       console.log("[0] Translating to English...");
       const {
         translatedText,
@@ -228,6 +253,8 @@ function App() {
       console.log("[0] Translated Text:", translatedText);
 
       // Step 1: Generate embedding from user input (using translated text)
+      if (ENABLE_PROCESSING_ANIMATION)
+        setProcessingStep("Generating embedding...");
       console.log("[2] Generating embedding...");
       const { embedding, usage: embeddingUsage } =
         await generateEmbeddingForCase(translatedText);
@@ -235,6 +262,8 @@ function App() {
       console.log("[2] Embedding generated. Vector length:", embedding.length);
 
       // Step 2: Query Weaviate with nearVector search
+      if (ENABLE_PROCESSING_ANIMATION)
+        setProcessingStep("Searching knowledge base...");
       console.log("[3] Searching Weaviate...");
       const weaviateResults = await searchWeaviateForCases(
         embedding,
@@ -303,6 +332,8 @@ ${
 7. Return ONLY valid JSON matching the schema, no additional text.`;
 
       // Step 5: Call LLM for HR response
+      if (ENABLE_PROCESSING_ANIMATION)
+        setProcessingStep("Generating response...");
       const { parsedResponse: hrResponse, usage: responseUsage } =
         await generateHRResponse(instructionPrompt, chatHistory, cleanedKB);
       accumulateUsage(responseUsage);
@@ -339,6 +370,7 @@ ${
         role: "assistant",
         hrResponse: hrResponse,
         knowledgeBase: cleanedKB,
+        animate: true,
       };
 
       const responses = [mainResponse];
@@ -372,6 +404,7 @@ ${
           role: "assistant",
           hrResponse: null,
           knowledgeBase: [],
+          animate: true,
         };
         responses.push(tokenLogMessage);
       }
@@ -770,7 +803,13 @@ Return response in this exact JSON format:
               </div>
               <div className={`message-bubble ${msg.sender}-message`}>
                 <div className="message-text">
-                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  {msg.sender === "ai" &&
+                  msg.animate &&
+                  ENABLE_STREAMING_EFFECT ? (
+                    <Typewriter text={msg.text} />
+                  ) : (
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  )}
                 </div>
 
                 {msg.sender === "ai" &&
@@ -828,10 +867,15 @@ Return response in this exact JSON format:
           ))}
 
           {isTyping && (
-            <div className="typing-indicator">
-              <span></span>
-              <span></span>
-              <span></span>
+            <div className="typing-indicator-container">
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              {processingStep && (
+                <div className="processing-step fade-in">{processingStep}</div>
+              )}
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -872,7 +916,7 @@ Return response in this exact JSON format:
 
         <div className="suggested-questions-wrapper">
           <p className="suggested-questions-label">แนะนำคำถาม</p>
-          <div className="suggested-questions-grid">
+          {/* <div className="suggested-questions-grid">
             {SUGGESTED_QUESTIONS.map((question, idx) => (
               <button
                 key={idx}
@@ -882,11 +926,11 @@ Return response in this exact JSON format:
               >
                 {question}
               </button>
-            ))}
-          </div>
+            ))} */}
         </div>
       </div>
     </div>
+    // </div>
   );
 }
 

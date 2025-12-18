@@ -535,3 +535,27 @@ body {
     max-width: 90%;
   }
 }
+
+.typing-indicator-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 10px;
+  margin-bottom: 10px;
+}
+
+.processing-step {
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
