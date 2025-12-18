@@ -27,3 +27,4 @@ yarn-error.log*
 dist
 .trunk
 dist_CRM
+dist_LRQ

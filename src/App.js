@@ -4,13 +4,23 @@ import "./App.css";
 import KFSDK from "@kissflow/lowcode-client-sdk";
 
 // ===== Environment Variables =====
-const WEAVIATE_ENDPOINT = process.env.REACT_APP_WEAVIATE_ENDPOINT || "";
-const WEAVIATE_API_KEY = process.env.REACT_APP_WEAVIATE_API_KEY || "";
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY || "";
 
+// ===== Leave Dataset Configuration =====
+// TODO: Replace with your actual Dataset ID and View ID from Kissflow
+const LEAVE_DATASET_ID = "Process_With_AI_Chat_Leave_Request_Balan";
+const LEAVE_VIEW_ID = "leave_quota";
+// TODO: Replace with actual Field IDs in your Dataset
+const LEAVE_FIELDS = {
+  Vacation: "Vacation_Leave_Balance", // Field ID for Vacation Leave
+  Personal: "Personal_Leave_Balance", // Field ID for Personal Leave
+  Sick: "Sick_Leave_Balance", // Field ID for Sick Leave
+  Email: "Employee_Email", // Field ID for Email (used for search)
+};
+
 // ===== Kissflow integration config =====
-const KF_POPUP_ID = "Popup_Hk6UKl1HO-";
-const KISSFLOW_PROCESS_NAME = "Case_Management_A02";
+const KF_POPUP_ID = "Popup_ifoiwDki9p";
+const KISSFLOW_PROCESS_NAME = "Leave_Request_A57";
 const KISSFLOW_CREATE_ITEM_API =
   process.env.REACT_APP_KISSFLOW_CREATE_ITEM_API || "";
 const KISSFLOW_FORM_ID = process.env.REACT_APP_KISSFLOW_FORM_ID || "";
@@ -31,36 +41,12 @@ const KISSFLOW_FIELD_MAPPING = {
 
 // ===== Suggested Questions =====
 const SUGGESTED_QUESTIONS = [
-  "ขอปรับเปลี่ยนเวลาทำงาน",
-  "ไม่สามารถพิมพ์เอกสารได้",
-  "สินค้าที่ได้รับไม่ตรงตามที่สั่ง",
-  "ลืมรหัสผ่านเข้าสู่ระบบ",
-  "ต้องการยกเลิกการสมัครสมาชิก",
+  "เช็ควันลาคงเหลือ",
+  "วันลาพักร้อนเหลือเท่าไหร่",
+  "ลากิจเหลือกี่วัน",
+  "ลาป่วยเหลือเท่าไหร่",
+  "ขอทราบสิทธิ์วันลา",
 ];
-
-// ===== Case Solution JSON Schema =====
-const CASE_SOLUTION_SCHEMA = {
-  title: "CaseSolutionResponse",
-  type: "object",
-  properties: {
-    hasSimilarCase: { type: "boolean" },
-    solution: { type: "string" },
-    referenceCaseTitle: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          caseNumber: { type: "string" },
-          caseTitle: { type: "string" },
-        },
-        required: ["caseNumber", "caseTitle"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["hasSimilarCase", "solution", "referenceCaseTitle"],
-  additionalProperties: false,
-};
 
 // ===== System Prompt =====
 const SYSTEM_PROMPT = `คุณคือผู้เชี่ยวชาญด้าน Case Management
@@ -82,108 +68,7 @@ const SYSTEM_PROMPT = `คุณคือผู้เชี่ยวชาญด
 - ห้ามใส่ emoji หรือสัญลักษณ์พิเศษ
 - ห้ามพูดว่า "พบเคสที่คล้ายกัน" ให้เอ่ยถึง "เคส" อย่างตรงไปตรงมา`;
 
-// ===== Weaviate Configuration =====
-const WEAVIATE_COLLECTION = "CaseSolutionKnowledgeBase";
-
-// ===== Helpers =====
-const transformToCleanedKB = (results = []) => {
-  return results.map((item) => ({
-    caseNumber: item.caseNumber || "",
-    caseTitle: item.caseTitle || "",
-    caseType: item.caseType || "",
-    caseDescription: item.caseDescription || "",
-    solutionDescription: item.solutionDescription || "",
-    instanceID: item.instanceID || "",
-    certainty: item._additional?.certainty || 0,
-  }));
-};
-
 // ===== MERGED API FUNCTIONS FROM SERVER.JS =====
-
-/**
- * Generate embedding from question using OpenAI API
- */
-async function generateQuestionEmbedding(question) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  const response = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "text-embedding-3-small",
-      input: question,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      `Embedding API error: ${errorData.error?.message || response.statusText}`
-    );
-  }
-
-  const data = await response.json();
-  const embedding = data.data[0].embedding;
-  return embedding;
-}
-
-/**
- * Search Weaviate for similar cases using semantic similarity
- */
-async function searchWeaviateForCases(embedding) {
-  const topK = 5;
-  const query = {
-    query: `
-      {
-        Get {
-          ${WEAVIATE_COLLECTION}(
-            nearVector: { vector: ${JSON.stringify(embedding)} }
-            limit: ${topK}
-          ) {
-            caseNumber
-            caseTitle
-            caseType
-            caseDescription
-            solutionDescription
-            instanceID
-            _additional { certainty }
-          }
-        }
-      }
-    `,
-  };
-
-  const response = await fetch(`${WEAVIATE_ENDPOINT}/v1/graphql`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${WEAVIATE_API_KEY}`,
-    },
-    body: JSON.stringify(query),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      `Weaviate search failed: ${
-        errorData.errors?.[0]?.message || response.statusText
-      }`
-    );
-  }
-
-  const data = await response.json();
-  if (data.errors) {
-    throw new Error(`Weaviate error: ${JSON.stringify(data.errors)}`);
-  }
-
-  const documents = data.data?.Get?.[WEAVIATE_COLLECTION] || [];
-  return documents;
-}
 
 /**
  * Generate answer from OpenAI using case context and chat history
@@ -193,15 +78,17 @@ async function generateAnswerFromOpenAI(context, question, chatHistory) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
 
-  const systemPrompt = `คุณคือผู้เชี่ยวชาญด้าน Case Management ตอบแบบตรงไปตรงมา
+  const systemPrompt = `คุณคือผู้ช่วย AI สำหรับตรวจสอบวันลาคงเหลือของพนักงาน
+หน้าที่: ตอบคำถามเกี่ยวกับวันลาคงเหลือ โดยใช้ข้อมูลจาก Context ที่ได้รับ
 
-หลักเกณฑ์:
-- ตอบโดยแนะนำขั้นตอนแก้ไขปัญหาที่เจาะจง
-- ใช้ข้อมูลจากเคสที่คล้ายกันในฐานความรู้ (ถ้ามี)
-- ไม่ต้องมีคำชำรุด ความสุภาพ หรือ personality
-- ตอบเป็นภาษาไทยเท่านั้น ไม่ต้องแปล
-- ถ้าไม่มีข้อมูลเพียงพอ ให้ระบุชัดว่า "ข้อมูลไม่เพียงพอ" หรือ "ต้องการข้อมูลเพิ่มเติม"
-- ไม่ต้องมี greeting, closing, หรือการสื่อสารแบบสังคม`;
+ข้อกำหนดการตอบ:
+1. ตอบเป็นภาษาไทยเท่านั้น
+2. ใช้ข้อมูลตัวเลขจาก Context เท่านั้น ห้ามกุตัวเลขขึ้นมาเอง
+3. ตอบให้ตรงกับสิ่งที่ผู้ใช้งานถาม:
+   - หากถามเจาะจงประเภทวันลา (เช่น "เหลือลาป่วยเท่าไหร่") ให้ตอบเฉพาะประเภทนั้น
+   - หากถามภาพรวม (เช่น "วันลาคงเหลือ", "เหลือวันลาอะไรบ้าง") ให้ตอบทั้งหมด
+4. หากคำถามไม่เกี่ยวข้องกับวันลาคงเหลือ ให้แจ้งกลับอย่างสุภาพว่า "ขออภัย ฉันสามารถให้ข้อมูลได้เฉพาะเรื่องวันลาคงเหลือเท่านั้น"
+5. ตอบสั้น กระชับ ตรงประเด็น`;
 
   // Filter chatHistory to only include valid messages with role property
   const validHistory = chatHistory.filter(
@@ -241,106 +128,11 @@ async function generateAnswerFromOpenAI(context, question, chatHistory) {
 }
 
 /**
- * Generate structured case data for Kissflow from question, context, and answer
- */
-async function generateKissflowCaseData(question, context, answer) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  const systemPrompt = `You are a case management expert. Your task is to generate structured case data for the Kissflow system based on the user's question and similar cases from the knowledge base.
-
-Generate a JSON object with the following fields:
-- Case_Title: A concise title for the case (max 100 characters)
-- Case_Type: The type of case - must be one of: "Customer Service", "HR", "Legal", "Technical Support"
-- Case_Description: Detailed description of the case issue (max 500 characters)
-- AI_Suggestions: AI recommendations for solving the issue based on similar cases (max 300 characters)
-- Solution_Description: Detailed explanation of how to resolve the case (max 500 characters)
-
-Return ONLY valid JSON, no additional text or explanation.`;
-
-  const userPrompt = `User's Question/Issue: ${question}
-
-Similar Cases from Knowledge Base:
-${context}
-
-AI Generated Answer/Solution:
-${answer}
-
-Based on the above information, generate the Kissflow case data in JSON format.`;
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.3,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    // Return default case data if generation fails
-    return {
-      Case_Title: question.substring(0, 100),
-      Case_Type: "Customer Service",
-      Case_Description: question.substring(0, 500),
-      AI_Suggestions: answer.substring(0, 300),
-      Solution_Description: answer.substring(0, 500),
-    };
-  }
-
-  const data = await response.json();
-  const jsonString = data.choices[0].message.content.trim();
-
-  try {
-    const caseData = JSON.parse(jsonString);
-
-    // Validate required fields
-    const requiredFields = [
-      "Case_Title",
-      "Case_Type",
-      "Case_Description",
-      "AI_Suggestions",
-      "Solution_Description",
-    ];
-    for (const field of requiredFields) {
-      if (!caseData.hasOwnProperty(field)) {
-        throw new Error(`Missing required field: ${field}`);
-      }
-    }
-
-    // Validate Case_Type
-    const validTypes = ["Customer Service", "HR", "Legal", "Technical Support"];
-    if (!validTypes.includes(caseData.Case_Type)) {
-      caseData.Case_Type = "Customer Service"; // Default to Customer Service
-    }
-
-    return caseData;
-  } catch (err) {
-    // Return default case data on parse error
-    return {
-      Case_Title: question.substring(0, 100),
-      Case_Type: "Customer Service",
-      Case_Description: question.substring(0, 500),
-      AI_Suggestions: answer.substring(0, 300),
-      Solution_Description: answer.substring(0, 500),
-    };
-  }
-}
-
-/**
  * Send Kissflow case data to create new item using native SDK API
  * Uses kf.api() method instead of HTTP REST API
  * IMPORTANT: Update KISSFLOW_FIELD_MAPPING with your actual Kissflow field IDs
  */
-async function sendKissflowCreateRequest(caseData, getKfFunc, getUserInfoFunc) {
+async function sendKissflowCreateRequest(getKfFunc, getUserInfoFunc) {
   try {
     // Get Kissflow SDK instance and user info using passed functions
     const kf = await getKfFunc();
@@ -351,23 +143,11 @@ async function sendKissflowCreateRequest(caseData, getKfFunc, getUserInfoFunc) {
     const userInfo = await getUserInfoFunc();
     const { accountId } = userInfo;
 
-    // Map case data to Kissflow field IDs using the configured mapping
-    const payload = {
-      [KISSFLOW_FIELD_MAPPING.Case_Title]: caseData.Case_Title || "",
-      [KISSFLOW_FIELD_MAPPING.Case_Type]: caseData.Case_Type || "",
-      [KISSFLOW_FIELD_MAPPING.Case_Description]:
-        caseData.Case_Description || "",
-      [KISSFLOW_FIELD_MAPPING.AI_Suggestions]: caseData.AI_Suggestions || "",
-      [KISSFLOW_FIELD_MAPPING.Solution_Description]:
-        caseData.Solution_Description || "",
-      [KISSFLOW_FIELD_MAPPING.Requester_Email]: userInfo.email || "",
-    };
-
     // Format: /process/{processVersion}/{accountId}/{processName}/batch/create/submit
     const apiEndpoint = `/process/2/${accountId}/${KISSFLOW_PROCESS_NAME}/create/submit`;
     const options = {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: "{}",
     };
 
     const result = await kf.api(apiEndpoint, options);
@@ -457,24 +237,43 @@ function App() {
   };
 
   /**
+   * Fetch user leave data from Kissflow Dataset
+   */
+  async function fetchUserLeaveData(email) {
+    try {
+      const kf = await getKf();
+      if (!kf) throw new Error("KF SDK not initialized");
+
+      const { accountId } = await getKissflowUserInfo();
+
+      // API: /dataset/2/:account_id/:dataset_id/view/:view_id/list
+      const endpoint = `/dataset/2/${accountId}/${LEAVE_DATASET_ID}/view/${LEAVE_VIEW_ID}/list?q=${email}&page_number=1&page_size=10&search_field=${LEAVE_FIELDS.Email}`;
+
+      console.log("Fetching leave data from:", endpoint);
+      const response = await kf.api(endpoint, { method: "GET" });
+
+      // Assuming response is the list of items or contains it
+      // Adjust based on actual API response structure if needed
+      return response.Data || response || [];
+    } catch (err) {
+      console.error("Error fetching leave data:", err);
+      throw err;
+    }
+  }
+
+  /**
    * Main Case Solver Flow with Conversation Context:
-   * - Step 1: Generate embedding from user question
-   * - Step 2: Search Weaviate for similar cases
-   * - Step 3: Generate answer from OpenAI with context
-   * - Step 4: Generate Kissflow case data
-   * - Step 5: Return structured response
+   * - Step 1: Get User Email
+   * - Step 2: Fetch Leave Data from Kissflow Dataset
+   * - Step 3: Format Response
    */
   async function handleQuestion(question, chatHistory) {
     try {
-      // Step 1: Generate embedding
-      const embedding = await generateQuestionEmbedding(question);
-
-      // Step 2: Search Weaviate
-      const docs = await searchWeaviateForCases(embedding);
-
-      if (docs.length === 0) {
+      // Get current user info
+      const userInfo = await getKissflowUserInfo();
+      if (!userInfo.email) {
         return {
-          text: "ไม่พบเคสที่คล้ายกัน กรุณาลองค้นหาด้วยคำศัพท์อื่น",
+          text: "ไม่สามารถดึงข้อมูล Email ของคุณได้ กรุณาตรวจสอบการเข้าสู่ระบบ Kissflow",
           sender: "ai",
           role: "assistant",
           knowledgeBase: [],
@@ -482,77 +281,75 @@ function App() {
         };
       }
 
-      // Step 3: Build context
-      const context = docs
-        .map(
-          (d, i) =>
-            `Case #${i + 1}:\n- Case Number: ${d.caseNumber}\n- Title: ${
-              d.caseTitle
-            }\n- Type: ${d.caseType}\n- Description: ${
-              d.caseDescription
-            }\n- Solution: ${d.solutionDescription}\n- Relevance: ${(
-              d._additional.certainty * 100
-            ).toFixed(2)}%`
-        )
-        .join("\n\n---\n\n");
+      // Fetch leave data
+      const leaveDataList = await fetchUserLeaveData(userInfo.email);
 
-      // Step 4: Generate answer
+      // Find the record that matches the email exactly (double check)
+      const userRecord =
+        leaveDataList.find(
+          (item) => item[LEAVE_FIELDS.Email] === userInfo.email
+        ) || leaveDataList[0]; // Fallback to first item if search was exact
+
+      if (!userRecord) {
+        return {
+          text: `ไม่พบข้อมูลวันลาสำหรับ Email: ${userInfo.email}`,
+          sender: "ai",
+          role: "assistant",
+          knowledgeBase: [],
+          kissflowData: null,
+        };
+      }
+
+      // Extract balances
+      const vacation = userRecord[LEAVE_FIELDS.Vacation] || 0;
+      const personal = userRecord[LEAVE_FIELDS.Personal] || 0;
+      const sick = userRecord[LEAVE_FIELDS.Sick] || 0;
+
+      // Build context for AI
+      const context = `ข้อมูลวันลาคงเหลือของพนักงาน:
+- ลาพักร้อน: ${vacation} วัน
+- ลากิจ: ${personal} วัน
+- ลาป่วย: ${sick} วัน`;
+
+      // Generate answer using AI
       const answer = await generateAnswerFromOpenAI(
         context,
         question,
         chatHistory
       );
 
-      // Step 5: Check if response indicates insufficient data
-      const hasInsufficientData =
-        answer.includes("ข้อมูลไม่เพียงพอ") ||
-        answer.includes("ต้องการข้อมูลเพิ่มเติม");
-
-      // Step 6: Generate Kissflow case data only if data is sufficient
-      const kissflowData = hasInsufficientData
-        ? null
-        : await generateKissflowCaseData(question, context, answer);
-
-      // Step 7: Build citations
-      const citations = docs.map((d, i) => ({
-        index: i + 1,
-        title: d.caseTitle,
-        caseNumber: d.caseNumber,
-        type: d.caseType,
-      }));
-
       return {
         text: answer,
         sender: "ai",
         role: "assistant",
-        knowledgeBase: citations,
-        kissflowData: kissflowData,
+        knowledgeBase: [],
+        showCreateButton: true, // Always show button for AI responses
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       return {
-        text: `เกิดข้อผิดพลาด: ${msg}`,
+        text: `เกิดข้อผิดพลาดในการดึงข้อมูล: ${msg}`,
         sender: "ai",
         role: "assistant",
         knowledgeBase: [],
-        kissflowData: null,
+        showCreateButton: false,
       };
     }
   }
   // ===== Kissflow opener =====
   async function openInKissflow(instanceData) {
     // instanceData: Object with _id and _activity_instance_id from creation response
-    // Maps to Kissflow popup parameters: crmpopupinsid and crmpopupatvid
+    // Maps to Kissflow popup parameters: leavereqpopupinsid and leavereqpopupatvid
 
     let popupParameters = {};
 
     if (typeof instanceData === "object" && instanceData !== null) {
       // Map response fields to Kissflow popup parameter names
       if (instanceData._id) {
-        popupParameters.crmpopupinsid = instanceData._id;
+        popupParameters.leavereqpopupinsid = instanceData._id;
       }
       if (instanceData._activity_instance_id) {
-        popupParameters.crmpopupatvid = instanceData._activity_instance_id;
+        popupParameters.leavereqpopupatvid = instanceData._activity_instance_id;
       }
     }
 
@@ -578,7 +375,7 @@ function App() {
   }
 
   // ===== Kissflow Create New Item =====
-  async function createNewItemInKissflow(kissflowCaseData) {
+  async function createNewItemInKissflow() {
     try {
       setIsTyping(true);
 
@@ -594,7 +391,6 @@ function App() {
 
       // Create item using native Kissflow SDK API
       const result = await sendKissflowCreateRequest(
-        kissflowCaseData,
         getKf,
         getKissflowUserInfo
       );
@@ -682,20 +478,22 @@ function App() {
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
 
-                {msg.sender === "ai" && msg.kissflowData && (
+                {msg.sender === "ai" && msg.showCreateButton && (
                   <div className="refs-inline">
                     <div className="refs-inline-header">
                       <strong>ต้องการสร้าง Request ใน Kissflow หรือไม่?</strong>
                       <button
                         type="button"
                         className="refs-create-new"
-                        onClick={() => {
-                          if (msg.kissflowData) {
-                            createNewItemInKissflow(msg.kissflowData);
-                          } else {
-                            alert("❌ ข้อมูล case ไม่พร้อม กรุณาลองใหม่");
-                          }
-                        }}
+                        onClick={() =>
+                          createNewItemInKissflow({
+                            Case_Title: "New Case from AI Chat",
+                            Case_Type: "Customer Service",
+                            Case_Description: "Created via AI Chat",
+                            AI_Suggestions: "",
+                            Solution_Description: "",
+                          })
+                        }
                         title="Create new case from this response"
                       >
                         ➕ New Item
