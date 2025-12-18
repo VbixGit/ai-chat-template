@@ -10,6 +10,8 @@ const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 // ===== Kissflow integration config =====
 const KF_POPUP_ID = "Popup_RfPa09F_CO";
 
+const ENABLE_TOKEN_LOGGING = true;
+
 // ===== Suggested Questions (HR-based) =====
 const SUGGESTED_QUESTIONS = [
   "นโยบายการลา",
@@ -27,7 +29,8 @@ const HR_RESPONSE_SCHEMA = {
     },
     answer: {
       type: "string",
-      description: "The answer to the employee's question in Thai",
+      description:
+        "The answer to the employee's question in the same language as the question",
     },
     referenceDocuments: {
       type: "array",
@@ -60,27 +63,31 @@ const SYSTEM_PROMPT = `You are an HR Assistant for the organization.
 Your role: Answer employee questions about company policies, benefits, and regulations by accurately referencing HR documents.
 
 【Response Method】
-1. Read conversation history to clearly understand the context
-2. Review ONLY the provided documents - if documents are relevant to the question, use them as reference
-3. Write specific answers citing information directly from the documents
-4. Do NOT guess or add information not found in the documents - ALL OUTPUT MUST BE IN THAI
+1. **Identify the language of the user's question.** You MUST answer in the SAME language as the user's question.
+   - If the user asks in English, answer in English.
+   - If the user asks in Thai, answer in Thai.
+2. Read conversation history to clearly understand the context and what the user is specifically asking.
+3. Review ONLY the provided documents - if documents are relevant to the question, use them as reference.
+4. Write specific answers citing information directly from the documents.
+5. **Do NOT summarize or shorten the information.** Provide full details as found in the documents.
+6. **Organize and explain the information** clearly, acting as an advisor explaining the policy based on the data.
 
 【Document Referencing Rules】
-- ONLY reference documents that directly answer the question
-- If document topic/description does NOT match the question → do NOT use it
-- If NO documents match → return hasRelevantDocument = false
-- Be strict and precise - better to say "no documents found" than give wrong information
+- ONLY reference documents that directly answer the question.
+- If document topic/description does NOT match the question → do NOT use it.
+- If NO documents match → return hasRelevantDocument = false.
+- Be strict and precise - better to say "no documents found" than give wrong information.
 
 【Prohibitions】
-- Do NOT guess or provide generic answers
-- Do NOT reference unrelated documents
-- Do NOT add information from outside the Knowledge Base
-- Never start with: "พบเอกสาร", "จากข้อมูลใน KB", "อ้างอิงจากเอกสาร"
-- Output MUST be valid JSON immediately
-- ALL ANSWERS MUST BE IN THAI LANGUAGE ONLY`;
+- Do NOT guess or provide generic answers.
+- Do NOT reference unrelated documents.
+- Do NOT add information from outside the Knowledge Base.
+- Never start with: "พบเอกสาร", "จากข้อมูลใน KB", "อ้างอิงจากเอกสาร".
+- Output MUST be valid JSON immediately.
+- **Do NOT mix languages.** Keep the response in the single language of the user's question.`;
 
 // ===== Weaviate Collection Configuration =====
-const WEAVIATE_COLLECTION = "HRdocUpload";
+const WEAVIATE_COLLECTION = "HRMixlangRAG";
 const WEAVIATE_FIELDS = `
   instanceID
   documentDetail
@@ -167,7 +174,11 @@ function App() {
 
     // Pass full conversation history for LLM context
     const aiResponse = await handleQuestion(input, [...messages]);
-    setMessages((prev) => [...prev, aiResponse]);
+    if (Array.isArray(aiResponse)) {
+      setMessages((prev) => [...prev, ...aiResponse]);
+    } else {
+      setMessages((prev) => [...prev, aiResponse]);
+    }
     setIsTyping(false);
   };
 
@@ -179,28 +190,56 @@ function App() {
    * Main HR Document Search Flow with Conversation Context:
    * - Takes full conversation history for LLM reasoning
    * - LLM can understand context from previous messages
-   * - Step 1: Receive user question (e.g., "นโยบายลาพักร้อน", "สิทธิประโยชน์พนักงาน")
-   * - Step 2: Generate embedding vector from user input
-   * - Step 3: Query Weaviate with nearVector search (topK=5)
-   * - Step 4: Transform results into cleanedKnowledgeBase
-   * - Step 5: Build instruction prompt with document info
-   * - Step 6: Call LLM with systemPrompt & instructionPrompt & full history
-   * - Step 7: Return structured HRDocumentResponse (JSON schema)
+   * - Step 0: Translate user question to English (for better embedding)
+   * - Step 1: Generate embedding vector from translated input
+   * - Step 2: Query Weaviate with nearVector search (topK=5)
+   * - Step 3: Transform results into cleanedKnowledgeBase
+   * - Step 4: Build instruction prompt with document info
+   * - Step 5: Call LLM with systemPrompt & instructionPrompt & full history
+   * - Step 6: Return structured HRDocumentResponse (JSON schema)
    */
   async function handleQuestion(question, chatHistory) {
+    let totalUsage = {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    };
+    const accumulateUsage = (usage) => {
+      if (!usage) return;
+      totalUsage.prompt_tokens += usage.prompt_tokens || 0;
+      totalUsage.completion_tokens += usage.completion_tokens || 0;
+      totalUsage.total_tokens += usage.total_tokens || 0;
+    };
+
     try {
       console.log("\n=== [HR Assistant] NEW QUERY ===");
       console.log("[1] User Question:", question);
       console.log("[1] Question Length:", question.length, "characters");
 
-      // Step 1: Generate embedding from user input
+      // Step 0: Translate to English
+      console.log("[0] Translating to English...");
+      const {
+        translatedText,
+        detectedLanguage,
+        usage: translationUsage,
+      } = await translateToEnglish(question);
+      accumulateUsage(translationUsage);
+      console.log(`[0] Detected Language: ${detectedLanguage}`);
+      console.log("[0] Translated Text:", translatedText);
+
+      // Step 1: Generate embedding from user input (using translated text)
       console.log("[2] Generating embedding...");
-      const embedding = await generateEmbeddingForCase(question);
+      const { embedding, usage: embeddingUsage } =
+        await generateEmbeddingForCase(translatedText);
+      accumulateUsage(embeddingUsage);
       console.log("[2] Embedding generated. Vector length:", embedding.length);
 
       // Step 2: Query Weaviate with nearVector search
       console.log("[3] Searching Weaviate...");
-      const weaviateResults = await searchWeaviateForCases(embedding, question);
+      const weaviateResults = await searchWeaviateForCases(
+        embedding,
+        translatedText
+      );
       console.log("[3] Raw Weaviate results:", weaviateResults.length);
 
       // Step 3: Transform results into cleanedKnowledgeBase
@@ -251,19 +290,22 @@ ${
 }
 
 【CRITICAL Instructions】
-1. ONLY answer using documents provided above - do NOT make up information
-2. If documents found AND contain relevant information: hasRelevantDocument = true, provide specific Thai answer citing the document
-3. If NO documents found OR documents are NOT relevant to the question: hasRelevantDocument = false, answer = "ขออภัย ไม่พบเอกสารที่เกี่ยวข้องกับคำถามของคุณ กรุณาติดต่อแผนก HR"
-4. For referenceDocuments: ONLY include documents you actually used in the answer
-5. Be strict - if document is not clearly related, do not reference it
-6. Return ONLY valid JSON matching the schema, no additional text`;
+1. The user is asking in **${detectedLanguage}**. You MUST answer in **${detectedLanguage}**.
+2. Analyze the user's question to understand specifically what they are asking.
+3. ONLY answer using documents provided above - do NOT make up information.
+4. If documents found AND contain relevant information: hasRelevantDocument = true.
+   - **Provide a detailed explanation** based on the documents.
+   - **Do NOT summarize or abbreviate.** Use the full details from the documents to explain.
+   - **Organize the answer** logically (e.g., steps, bullet points) to help the user understand.
+   - **Answer in ${detectedLanguage}.**
+5. If NO documents found OR documents are NOT relevant to the question: hasRelevantDocument = false, answer = "Sorry, I couldn't find any relevant documents for your question. Please contact HR." (Translate this message to **${detectedLanguage}**).
+6. For referenceDocuments: ONLY include documents you actually used in the answer.
+7. Return ONLY valid JSON matching the schema, no additional text.`;
 
       // Step 5: Call LLM for HR response
-      const hrResponse = await generateHRResponse(
-        instructionPrompt,
-        chatHistory,
-        cleanedKB
-      );
+      const { parsedResponse: hrResponse, usage: responseUsage } =
+        await generateHRResponse(instructionPrompt, chatHistory, cleanedKB);
+      accumulateUsage(responseUsage);
 
       // Step 6: Validate and return response - if no relevant documents, show "not found" message
       if (!hrResponse.hasRelevantDocument) {
@@ -291,13 +333,50 @@ ${
 
       console.log("=== [HR Assistant] QUERY COMPLETE ===\n");
 
-      return {
+      const mainResponse = {
         text: hrResponse.answer,
         sender: "ai",
         role: "assistant",
         hrResponse: hrResponse,
         knowledgeBase: cleanedKB,
       };
+
+      const responses = [mainResponse];
+
+      if (ENABLE_TOKEN_LOGGING) {
+        const tokenLogMessage = {
+          text:
+            `**Token Usage Report:**\n\n` +
+            `**1. Translation Step:**\n` +
+            `- Prompt Tokens: ${
+              translationUsage ? translationUsage.prompt_tokens : 0
+            }\n` +
+            `- Completion Tokens: ${
+              translationUsage ? translationUsage.completion_tokens : 0
+            }\n` +
+            `- Total: ${
+              translationUsage ? translationUsage.total_tokens : 0
+            }\n\n` +
+            `**2. Embedding Step:**\n` +
+            `- Total: ${embeddingUsage ? embeddingUsage.total_tokens : 0}\n\n` +
+            `**3. Response Generation Step:**\n` +
+            `- Prompt Tokens: ${
+              responseUsage ? responseUsage.prompt_tokens : 0
+            }\n` +
+            `- Completion Tokens: ${
+              responseUsage ? responseUsage.completion_tokens : 0
+            }\n` +
+            `- Total: ${responseUsage ? responseUsage.total_tokens : 0}\n\n` +
+            `**Grand Total Tokens Used**: ${totalUsage.total_tokens}`,
+          sender: "ai",
+          role: "assistant",
+          hrResponse: null,
+          knowledgeBase: [],
+        };
+        responses.push(tokenLogMessage);
+      }
+
+      return responses;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       console.error("[HR Assistant Error]", msg);
@@ -308,6 +387,67 @@ ${
         hrResponse: null,
         knowledgeBase: [],
       };
+    }
+  }
+
+  /**
+   * Step 0: Translate user input to English and detect language
+   */
+  async function translateToEnglish(text) {
+    try {
+      console.log(
+        "   → Translating and detecting language:",
+        text.substring(0, 50) + "..."
+      );
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are a helpful translator.
+1. Detect the language of the user's text (e.g., "Thai", "English", "Japanese").
+2. Translate the text to English. If it is already in English, keep it as is.
+3. Return the result in this JSON format:
+{
+  "detectedLanguage": "Language Name",
+  "translatedText": "English translation"
+}`,
+              },
+              { role: "user", content: text },
+            ],
+            response_format: { type: "json_object" },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Translation API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+      const parsed = JSON.parse(content);
+
+      const translatedText = parsed.translatedText || text;
+      const detectedLanguage = parsed.detectedLanguage || "Unknown";
+      const usage = data.usage;
+
+      console.log(
+        `   ✓ Detected: ${detectedLanguage}, Translated: ${translatedText}`
+      );
+      return { translatedText, detectedLanguage, usage };
+    } catch (err) {
+      console.error("   ✗ Translation failed:", err.message);
+      // Fallback to original text if translation fails
+      return { translatedText: text, detectedLanguage: "Unknown", usage: null };
     }
   }
 
@@ -345,8 +485,9 @@ ${
 
       const data = await response.json();
       const embedding = data.data[0].embedding;
+      const usage = data.usage;
       console.log("   ✓ Embedding created successfully");
-      return embedding;
+      return { embedding, usage };
     } catch (err) {
       console.error("   ✗ Embedding generation failed:", err.message);
       throw new Error(`Embedding failed: ${err.message}`);
@@ -469,7 +610,7 @@ ${
 Return response in this exact JSON format:
 {
   "hasRelevantDocument": boolean,
-  "answer": "Thai text answer here",
+  "answer": "Answer in the same language as the user's question",
   "referenceDocuments": [
     {
       "instanceID": "id here",
@@ -538,7 +679,7 @@ Return response in this exact JSON format:
         parsedResponse.referenceDocuments = [];
       }
 
-      return parsedResponse;
+      return { parsedResponse, usage: data.usage };
     } catch (err) {
       throw new Error(`LLM generation failed: ${err.message}`);
     }

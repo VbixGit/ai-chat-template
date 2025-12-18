@@ -26,3 +26,4 @@ yarn-error.log*
 .env.*
 dist
 dist_CRM
+dist_LRQ
