@@ -12,9 +12,9 @@ const KF_POPUP_ID = "Popup_RfPa09F_CO";
 
 // ===== Suggested Questions (HR-based) =====
 const SUGGESTED_QUESTIONS = [
-  "นโยบายลาพักร้อน",
-  "สิทธิประโยชน์พนักงาน",
-  "ขั้นตอนการขออนุญาต",
+  "นโยบายการลา",
+  "การเบิกค่ารักษาพยาบาล",
+  "ขั้นตอนการขออนุมัติ",
 ];
 
 // ===== HR Document Search JSON Schema (MANDATORY) =====
@@ -56,22 +56,28 @@ const HR_RESPONSE_SCHEMA = {
 };
 
 // ===== System Prompt (LLM MUST OUTPUT THAI) =====
-const SYSTEM_PROMPT = `คุณคือผู้ช่วย HR (HR Assistant) สำหรับองค์กร
-หน้าที่: ตอบคำถามของพนักงานเกี่ยวกับนโยบาย สิทธิประโยชน์ และระเบียบต่างๆของบริษัท โดยอ้างอิงจากเอกสาร HR
+const SYSTEM_PROMPT = `You are an HR Assistant for the organization.
+Your role: Answer employee questions about company policies, benefits, and regulations by accurately referencing HR documents.
 
-【วิธีการตอบ】
-1. อ่านประวัติการสนทนา (conversation history) เพื่อเข้าใจ context
-2. ตรวจสอบ Knowledge Base - หากมีเอกสารที่เกี่ยวข้อง ให้ใช้เป็นอ้างอิง
-3. เขียนคำตอบที่ชัดเจน และเป็นประโยชน์ต่อพนักงาน
-4. ห้ามเดา - ทั้งหมดต้องเป็นไทยเท่านั้น
+【Response Method】
+1. Read conversation history to clearly understand the context
+2. Review ONLY the provided documents - if documents are relevant to the question, use them as reference
+3. Write specific answers citing information directly from the documents
+4. Do NOT guess or add information not found in the documents - ALL OUTPUT MUST BE IN THAI
 
-【เงื่อนไข】
-- Respond naturally like a professional HR consultant
-- Use conversation context to provide relevant information
-- If relevant documents exist → hasRelevantDocument = true
-- If no relevant documents → hasRelevantDocument = false, answer = "ขออภัย ไม่พบเอกสารที่เกี่ยวข้องกับคำถามของคุณ กรุณาติดต่อแผนก HR"
+【Document Referencing Rules】
+- ONLY reference documents that directly answer the question
+- If document topic/description does NOT match the question → do NOT use it
+- If NO documents match → return hasRelevantDocument = false
+- Be strict and precise - better to say "no documents found" than give wrong information
+
+【Prohibitions】
+- Do NOT guess or provide generic answers
+- Do NOT reference unrelated documents
+- Do NOT add information from outside the Knowledge Base
 - Never start with: "พบเอกสาร", "จากข้อมูลใน KB", "อ้างอิงจากเอกสาร"
-- Output MUST be valid JSON immediately`;
+- Output MUST be valid JSON immediately
+- ALL ANSWERS MUST BE IN THAI LANGUAGE ONLY`;
 
 // ===== Weaviate Collection Configuration =====
 const WEAVIATE_COLLECTION = "HRdocUpload";
@@ -183,19 +189,37 @@ function App() {
    */
   async function handleQuestion(question, chatHistory) {
     try {
-      console.log("[HR Assistant] Processing:", question.substring(0, 40));
+      console.log("\n=== [HR Assistant] NEW QUERY ===");
+      console.log("[1] User Question:", question);
+      console.log("[1] Question Length:", question.length, "characters");
 
       // Step 1: Generate embedding from user input
+      console.log("[2] Generating embedding...");
       const embedding = await generateEmbeddingForCase(question);
+      console.log("[2] Embedding generated. Vector length:", embedding.length);
 
-      // Step 2: Query Weaviate with nearVector search (topK=5)
-      const weaviateResults = await searchWeaviateForCases(embedding);
+      // Step 2: Query Weaviate with nearVector search
+      console.log("[3] Searching Weaviate...");
+      const weaviateResults = await searchWeaviateForCases(embedding, question);
+      console.log("[3] Raw Weaviate results:", weaviateResults.length);
 
       // Step 3: Transform results into cleanedKnowledgeBase
       const cleanedKB = transformToCleanedKB(weaviateResults);
-      console.log(
-        `[HR Assistant] Found ${cleanedKB.length} relevant documents`
-      );
+      console.log("[4] Cleaned documents:", cleanedKB.length);
+
+      // Log document details for debugging
+      if (cleanedKB.length > 0) {
+        console.log("[4] Top document details:");
+        cleanedKB.slice(0, 3).forEach((doc, i) => {
+          console.log(
+            `   Doc ${i + 1}: "${doc.documentTopic}" (${(
+              doc.certainty * 100
+            ).toFixed(1)}%)`
+          );
+        });
+      } else {
+        console.log("[4] ⚠️  NO documents passed the relevance threshold!");
+      }
 
       // Step 4: Build optimized instruction prompt with context awareness
       // Use recent user questions for better context understanding (faster response)
@@ -216,22 +240,23 @@ ${
     ? cleanedKB
         .map(
           (c, i) =>
-            `${i + 1}. ID: ${c.instanceID}, Topic: ${
-              c.documentTopic
-            }\n   Description: ${
+            `${i + 1}. Topic: ${c.documentTopic}\n   Description: ${
               c.documentDescription
-            }\n   Match Confidence: ${(c.certainty * 100).toFixed(0)}%`
+            }\n   Content: ${c.documentDetail}\n   Match Confidence: ${(
+              c.certainty * 100
+            ).toFixed(0)}%`
         )
         .join("\n\n")
     : "No matching documents found"
 }
 
-【Instructions】
-1. Answer the employee's question based on the available documents
-2. If documents found: hasRelevantDocument = true, provide Thai answer using document info
-3. If NO documents found: hasRelevantDocument = false, answer = "ขออภัย ไม่พบเอกสารที่เกี่ยวข้องกับคำถามของคุณ กรุณาติดต่อแผนก HR"
-4. For referenceDocuments: include only the instanceID, documentTopic, and documentDescription from the found documents
-5. Return ONLY valid JSON matching the schema, no additional text`;
+【CRITICAL Instructions】
+1. ONLY answer using documents provided above - do NOT make up information
+2. If documents found AND contain relevant information: hasRelevantDocument = true, provide specific Thai answer citing the document
+3. If NO documents found OR documents are NOT relevant to the question: hasRelevantDocument = false, answer = "ขออภัย ไม่พบเอกสารที่เกี่ยวข้องกับคำถามของคุณ กรุณาติดต่อแผนก HR"
+4. For referenceDocuments: ONLY include documents you actually used in the answer
+5. Be strict - if document is not clearly related, do not reference it
+6. Return ONLY valid JSON matching the schema, no additional text`;
 
       // Step 5: Call LLM for HR response
       const hrResponse = await generateHRResponse(
@@ -240,8 +265,32 @@ ${
         cleanedKB
       );
 
-      // Step 6: Validate and return response
-      console.log("[HR Assistant] Response ready");
+      // Step 6: Validate and return response - if no relevant documents, show "not found" message
+      if (!hrResponse.hasRelevantDocument) {
+        console.log(
+          "[6] ⚠️  No relevant documents found - returning error message"
+        );
+      } else {
+        console.log(
+          "[6] ✓ Response ready with",
+          hrResponse.referenceDocuments?.length || 0,
+          "referenced documents"
+        );
+
+        // Validate that referenced documents match the ones we provided
+        if (
+          hrResponse.referenceDocuments &&
+          hrResponse.referenceDocuments.length > 0
+        ) {
+          console.log("[6] Referenced documents:");
+          hrResponse.referenceDocuments.forEach((ref, i) => {
+            console.log(`      ${i + 1}. ${ref.documentTopic}`);
+          });
+        }
+      }
+
+      console.log("=== [HR Assistant] QUERY COMPLETE ===\n");
+
       return {
         text: hrResponse.answer,
         sender: "ai",
@@ -268,6 +317,14 @@ ${
    */
   async function generateEmbeddingForCase(text) {
     try {
+      // Clean and normalize the input text for better embedding quality
+      const cleanedText = text.trim();
+
+      console.log(
+        "   → Creating embedding for:",
+        cleanedText.substring(0, 50) + "..."
+      );
+
       const response = await fetch("https://api.openai.com/v1/embeddings", {
         method: "POST",
         headers: {
@@ -276,26 +333,32 @@ ${
         },
         body: JSON.stringify({
           model: "text-embedding-3-small",
-          input: text,
+          input: cleanedText,
         }),
       });
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("   ✗ Embedding API error:", errorData);
         throw new Error(`Embedding API error: ${response.statusText}`);
       }
 
       const data = await response.json();
-      return data.data[0].embedding;
+      const embedding = data.data[0].embedding;
+      console.log("   ✓ Embedding created successfully");
+      return embedding;
     } catch (err) {
+      console.error("   ✗ Embedding generation failed:", err.message);
       throw new Error(`Embedding failed: ${err.message}`);
     }
   }
 
   /**
    * Step 2: Query Weaviate using semantic search (nearVector)
-   * Returns topK=5 results with fields from WEAVIATE_FIELDS
+   * Returns topK=10 results, then filters by relevance threshold (0.65)
+   * This ensures we get highly relevant documents only
    */
-  async function searchWeaviateForCases(embedding) {
+  async function searchWeaviateForCases(embedding, originalQuestion) {
     const gql = `
       query {
         Get {
@@ -303,7 +366,7 @@ ${
             nearVector: {
               vector: ${safeJson(embedding)}
             }
-            limit: 5
+            limit: 15
           ) {
             ${WEAVIATE_FIELDS}
           }
@@ -312,6 +375,8 @@ ${
     `;
 
     try {
+      console.log("   → Querying Weaviate (limit: 15)...");
+
       const response = await fetch(`${WEAVIATE_ENDPOINT}/v1/graphql`, {
         method: "POST",
         headers: {
@@ -323,19 +388,54 @@ ${
 
       if (!response.ok) {
         const body = await response.text();
+        console.error("   ✗ Weaviate HTTP error:", response.status, body);
         throw new Error(`Weaviate error: ${response.status}`);
       }
 
       const json = await response.json();
       if (json.errors) {
+        console.error("   ✗ Weaviate GraphQL errors:", json.errors);
         throw new Error(
           `Weaviate GraphQL errors: ${JSON.stringify(json.errors)}`
         );
       }
 
-      const results = json?.data?.Get?.[WEAVIATE_COLLECTION] || [];
-      return results;
+      let results = json?.data?.Get?.[WEAVIATE_COLLECTION] || [];
+      console.log("   ✓ Retrieved", results.length, "results from Weaviate");
+
+      // Log all results with their certainty scores for debugging
+      if (results.length > 0) {
+        console.log("   → Certainty scores:");
+        results.forEach((r, i) => {
+          const certainty = r._additional?.certainty || 0;
+          const topic = r.documentTopic || "No topic";
+          console.log(
+            `      ${i + 1}. ${(certainty * 100).toFixed(
+              1
+            )}% - "${topic.substring(0, 50)}"`
+          );
+        });
+      }
+
+      // Balanced threshold at 0.60 (60%) - not too strict, not too loose
+      const RELEVANCE_THRESHOLD = 0.6;
+      console.log(`   → Filtering by threshold: ${RELEVANCE_THRESHOLD * 100}%`);
+
+      const filteredResults = results.filter(
+        (item) => (item._additional?.certainty || 0) >= RELEVANCE_THRESHOLD
+      );
+
+      console.log(
+        `   → Documents passing threshold: ${filteredResults.length}`
+      );
+
+      // Return top 5 most relevant results after filtering
+      const finalResults = filteredResults.slice(0, 5);
+      console.log(`   ✓ Final selected documents: ${finalResults.length}`);
+
+      return finalResults;
     } catch (err) {
+      console.error("   ✗ Weaviate search failed:", err.message);
       throw new Error(`Weaviate search failed: ${err.message}`);
     }
   }
