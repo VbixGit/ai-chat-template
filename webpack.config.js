@@ -1,10 +1,10 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const webpack = require('webpack');
-const dotenv = require('dotenv');
+const webpack = require("webpack");
+const dotenv = require("dotenv");
 
 // Load environment variables from .env file
-const env = dotenv.config().parsed;
+const env = dotenv.config().parsed || {};
 
 // Create an object to define environment variables for the client
 const envKeys = Object.keys(env).reduce((prev, next) => {
@@ -50,6 +50,7 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: "src/index.html",
+      inject: true,
     }),
     new webpack.DefinePlugin(envKeys),
   ],
