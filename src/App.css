@@ -772,3 +772,119 @@ body {
     max-width: 90%;
   }
 }
+/* ===== ERROR BANNER ===== */
+.error-banner {
+  background-color: #fee;
+  color: #c33;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 1rem;
+  border-left: 4px solid #c33;
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+}
+
+[data-theme="dark"] .error-banner {
+  background-color: #3a2020;
+  color: #ff6b6b;
+  border-left-color: #ff6b6b;
+}
+
+/* ===== INITIALIZATION BANNER ===== */
+.initialization-banner {
+  background-color: #e3f2fd;
+  color: #1565c0;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 1rem;
+  border-left: 4px solid #1565c0;
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+[data-theme="dark"] .initialization-banner {
+  background-color: #0d47a1;
+  color: #64b5f6;
+  border-left-color: #64b5f6;
+}
+
+/* ===== USER INFO ===== */
+.user-info {
+  background-color: var(--ai-message-background);
+  color: var(--text-color);
+  padding: 0.75rem 1rem;
+  margin: 0 1rem 0.5rem 1rem;
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-color);
+}
+
+/* ===== FLOW SELECTOR ===== */
+.flow-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin: 0 1rem 0.5rem 1rem;
+  background-color: var(--ai-message-background);
+  border-radius: 0.25rem;
+  border: 1px solid var(--border-color);
+}
+
+.flow-selector label {
+  font-weight: 500;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.flow-selector select {
+  flex: 1;
+  padding: 0.5rem;
+  background-color: var(--input-background);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.flow-selector select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== TASK STATE ===== */
+.task-state {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  margin: 0 1rem 0.5rem 1rem;
+  background-color: var(--ai-message-background);
+  border-radius: 0.25rem;
+  border: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+
+.task-state span {
+  flex: 1;
+}
+
+.task-state button {
+  padding: 0.5rem 1rem;
+  background-color: var(--user-message-background);
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: opacity 0.2s ease;
+}
+
+.task-state button:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.task-state button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
