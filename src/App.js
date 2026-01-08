@@ -1,143 +1,175 @@
-/**
- * KISSFLOW AI CHAT COMPONENT - REBUILT
- *
- * DECISION: MAJOR REFACTOR
- * Removed: Hardcoded system prompts, credentials, field mappings, Thai-only support
- * Added: Multi-flow support (HR, TOR, CRM, Leave), config-driven, language detection
- *
- * Architecture:
- * - useEffect: Initialize user info once
- * - useState: messages (with metadata), userInfo, selectedFlow, taskState, systemPrompt
- * - Service modules: openai, weaviate, kissflow, languageDetection
- * - Config layer: flows, env, types
- */
-
 import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import "./App.css";
+import KFSDK from "@kissflow/lowcode-client-sdk";
 
-// ===== CONFIG & TYPES =====
-import { validateAllConfig } from "./config/env";
-import { FLOWS, listAvailableFlows } from "./config/flows";
+// ===== Environment Variables =====
+const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY || "";
 
-// ===== SERVICES =====
-import {
-  getUserInfoFromKissflow,
-  validateKissflowAvailability,
-} from "./lib/services/kissflow";
-import {
-  detectLanguage,
-  getLanguageName,
-} from "./lib/services/languageDetection";
-import {
-  createUserMessage,
-  createAssistantMessage,
-  getRecentMessages,
-  logMessage,
-  filterMessagesByFlow,
-} from "./lib/utils/messageMetadata";
-import {
-  createTaskState,
-  updateTaskStatus,
-  pauseTask,
-  resumeTask,
-  formatTaskStatus,
-  getTaskDescription,
-} from "./lib/utils/taskState";
+// ===== Leave Dataset Configuration =====
+// TODO: Replace with your actual Dataset ID and View ID from Kissflow
+const LEAVE_DATASET_ID = "Process_With_AI_Chat_Leave_Request_Balan";
+const LEAVE_VIEW_ID = "leave_quota";
+// TODO: Replace with actual Field IDs in your Dataset
+const LEAVE_FIELDS = {
+  Vacation: "Vacation_Leave_Balance", // Field ID for Vacation Leave
+  Personal: "Personal_Leave_Balance", // Field ID for Personal Leave
+  Sick: "Sick_Leave_Balance", // Field ID for Sick Leave
+  Email: "Employee_Email", // Field ID for Email (used for search)
+};
 
-// ===== MAIN APP COMPONENT =====
-// DECISION: COMPLETE REBUILD - Multi-flow, config-driven, language-aware
+// ===== Kissflow integration config =====
+const KF_POPUP_ID = "Popup_ifoiwDki9p";
+const KISSFLOW_PROCESS_NAME = "Leave_Request_A57";
+const KISSFLOW_CREATE_ITEM_API =
+  process.env.REACT_APP_KISSFLOW_CREATE_ITEM_API || "";
+const KISSFLOW_FORM_ID = process.env.REACT_APP_KISSFLOW_FORM_ID || "";
+const KISSFLOW_ACCESS_KEY_ID = process.env.KISSFLOW_ACCESS_KEY_ID || "";
+const KISSFLOW_ACCESS_KEY_SECRET = process.env.KISSFLOW_ACCESS_KEY_SECRET || "";
 
-function App() {
-  // ===== STATE =====
-  // DECISION: KEEP from original, ADD metadata and task state
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const messagesEndRef = useRef(null);
+// ===== Kissflow Field ID Mappings =====
+// TODO: Replace these with actual field IDs from your Kissflow process
+// Go to your process form in Kissflow and get the field IDs by inspecting the form
+const KISSFLOW_FIELD_MAPPING = {
+  Case_Title: "Case_Title", // Replace with actual field ID
+  Case_Type: "Case_Type", // Replace with actual field ID
+  Case_Description: "Case_Description", // Replace with actual field ID
+  AI_Suggestions: "AI_Suggestions", // Replace with actual field ID
+  Solution_Description: "Solution_Description", // Replace with actual field ID
+  Requester_Email: "Requester_Email", // Replace with actual field ID
+};
 
-  // DECISION: ADD - User info (loaded once at init)
-  const [userInfo, setUserInfo] = useState(null);
-  const [userInfoError, setUserInfoError] = useState(null);
+// ===== Suggested Questions =====
+const SUGGESTED_QUESTIONS = [
+  "เช็ควันลาคงเหลือ",
+  "วันลาพักร้อนเหลือเท่าไหร่",
+  "ลากิจเหลือกี่วัน",
+  "ลาป่วยเหลือเท่าไหร่",
+  "ขอทราบสิทธิ์วันลา",
+];
 
-  // DECISION: ADD - Flow selection
-  const [selectedFlow, setSelectedFlow] = useState("LEAVE");
-  const [availableFlows, setAvailableFlows] = useState([]);
+// ===== System Prompt =====
+const SYSTEM_PROMPT = `คุณคือผู้เชี่ยวชาญด้าน Case Management
+หน้าที่: วิเคราะห์ปัญหา และให้คำแนะนำการจัดการเพื่อแก้ไข
 
-  // DECISION: ADD - System prompt (loaded from Kissflow Page variables)
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [systemPromptId, setSystemPromptId] = useState("");
+【หลักการตอบ】
+1. ตอบแบบตรงไปตรงมา ไม่ต้องมีคำชำรุดหรือ personality
+2. มุ่งเน้นคำแนะนำเชิงปฏิบัติ (actionable steps) เพื่อแก้ปัญหาในเบื้องต้น
+3. อ้างอิงจากเคสที่คล้ายกัน (ถ้ามี) เพื่อให้การแนะนำมีความน่าเชื่อถือ
+4. ตอบเป็นภาษาไทยเท่านั้น
+5. ไม่ต้องการคำว่า "ยินดี", "ช่วยเหลือ", "ค่อนข้าง", "ประมาณ", ฯลฯ
 
-  // DECISION: ADD - Language detection
-  const [detectedLanguage, setDetectedLanguage] = useState("en");
+【รูปแบบคำตอบ】
+ประเมินสถานการณ์ → บ่งชี้สาเหตุเบื้องต้น → แนะนำวิธีแก้ไขขั้นแรก → ระบุขั้นตอนปฏิบัติ
 
-  // DECISION: ADD - Task state for pause/resume
-  const [taskState, setTaskState] = useState(null);
+【ข้อห้าม】
+- ห้ามใส่คำลักษณะนาม ความรู้สึก หรือการสื่อสารแบบมนุษย์
+- ห้ามพูดถึงตัวเองหรือบทบาท
+- ห้ามใส่ emoji หรือสัญลักษณ์พิเศษ
+- ห้ามพูดว่า "พบเคสที่คล้ายกัน" ให้เอ่ยถึง "เคส" อย่างตรงไปตรงมา`;
 
-  // DECISION: ADD - Loading and error states
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+// ===== MERGED API FUNCTIONS FROM SERVER.JS =====
 
-  // ===== INITIALIZATION =====
-  // DECISION: KEEP useEffect pattern, REFACTOR:
-  // Load user info once, validate Kissflow SDK, load flows
-  useEffect(() => {
-    const initializeApp = async () => {
-      console.log("🚀 Initializing app...");
+/**
+ * Generate answer from OpenAI using case context and chat history
+ */
+async function generateAnswerFromOpenAI(context, question, chatHistory) {
+  if (!OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
 
-      try {
-        // Validate configuration
-        validateAllConfig();
+  const systemPrompt = `คุณคือผู้ช่วย AI สำหรับตรวจสอบวันลาคงเหลือของพนักงาน
+หน้าที่: ตอบคำถามเกี่ยวกับวันลาคงเหลือ โดยใช้ข้อมูลจาก Context ที่ได้รับ
 
-        // Check Kissflow availability
-        const kfCheck = await validateKissflowAvailability();
-        if (!kfCheck.available) {
-          throw new Error(kfCheck.error || "Kissflow SDK not available");
-        }
+ข้อกำหนดการตอบ:
+1. ตอบเป็นภาษาไทยเท่านั้น
+2. ใช้ข้อมูลตัวเลขจาก Context เท่านั้น ห้ามกุตัวเลขขึ้นมาเอง
+3. ตอบให้ตรงกับสิ่งที่ผู้ใช้งานถาม:
+   - หากถามเจาะจงประเภทวันลา (เช่น "เหลือลาป่วยเท่าไหร่") ให้ตอบเฉพาะประเภทนั้น
+   - หากถามภาพรวม (เช่น "วันลาคงเหลือ", "เหลือวันลาอะไรบ้าง") ให้ตอบทั้งหมด
+4. หากคำถามไม่เกี่ยวข้องกับวันลาคงเหลือ ให้แจ้งกลับอย่างสุภาพว่า "ขออภัย ฉันสามารถให้ข้อมูลได้เฉพาะเรื่องวันลาคงเหลือเท่านั้น"
+5. ตอบสั้น กระชับ ตรงประเด็น`;
 
-        // Load user info
-        const user = await getUserInfoFromKissflow();
-        setUserInfo(user);
-        console.log("✅ User info loaded:", user);
+  // Filter chatHistory to only include valid messages with role property
+  const validHistory = chatHistory.filter(
+    (msg) => msg && msg.role && msg.content
+  );
+  const recentHistory = validHistory.slice(-4); // Keep last 4 messages
 
-        // Load available flows
-        const flows = listAvailableFlows();
-        setAvailableFlows(flows);
-        console.log("✅ Available flows loaded:", flows.length);
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...recentHistory,
+    { role: "user", content: `Q: ${question}\n${context}` },
+  ];
 
-        // Set default flow if available
-        if (flows.length > 0) {
-          const defaultFlow = flows.find((f) => f.key === "LEAVE") || flows[0];
-          setSelectedFlow(defaultFlow.key);
-          setSystemPromptId(defaultFlow.key);
-          console.log("📋 Default flow set:", defaultFlow.key);
-        }
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: messages,
+    }),
+  });
 
-        // TODO: Load system prompt from Kissflow Page variables
-        // For now, use a default placeholder
-        setSystemPrompt(
-          "You are a helpful AI assistant for case management and leave requests."
-        );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `LLM API error: ${errorData.error?.message || response.statusText}`
+    );
+  }
 
-        setUserInfoError(null);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        console.error("❌ Initialization failed:", errorMsg);
-        setUserInfoError(errorMsg);
-      }
+  const data = await response.json();
+  const answer = data.choices[0].message.content.trim();
+  return answer;
+}
+
+/**
+ * Send Kissflow case data to create new item using native SDK API
+ * Uses kf.api() method instead of HTTP REST API
+ * IMPORTANT: Update KISSFLOW_FIELD_MAPPING with your actual Kissflow field IDs
+ */
+async function sendKissflowCreateRequest(getKfFunc, getUserInfoFunc) {
+  try {
+    // Get Kissflow SDK instance and user info using passed functions
+    const kf = await getKfFunc();
+    if (!kf) {
+      throw new Error("Kissflow SDK not initialized");
+    }
+
+    const userInfo = await getUserInfoFunc();
+    const { accountId } = userInfo;
+
+    // Format: /process/{processVersion}/{accountId}/{processName}/batch/create/submit
+    const apiEndpoint = `/process/2/${accountId}/${KISSFLOW_PROCESS_NAME}/create/submit`;
+    const options = {
+      method: "POST",
+      body: "{}",
     };
 
-    initializeApp();
-  }, []);
+    const result = await kf.api(apiEndpoint, options);
+    return result;
+  } catch (err) {
+    throw new Error(`Failed to create Kissflow item: ${err.message}`);
+  }
+}
 
-  // ===== AUTO-SCROLL =====
-  // DECISION: KEEP from original
+function App() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [createdItemData, setCreatedItemData] = useState(null);
+  const messagesEndRef = useRef(null);
+  const kfRef = useRef(null);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, [messages, isTyping]);
 
-  // ===== DARK MODE =====
-  // DECISION: KEEP from original
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.setAttribute("data-theme", "dark");
@@ -146,113 +178,255 @@ function App() {
     }
   }, [isDarkMode]);
 
-  // ===== HANDLE FLOW CHANGE =====
-  // DECISION: ADD - When flow changes, reload system prompt
-  const handleFlowChange = (flowKey) => {
-    setSelectedFlow(flowKey);
-    setMessages([]); // Clear chat history when switching flows
-    setError(null);
-    setSystemPromptId(flowKey);
-    console.log(`📋 Switched to flow: ${flowKey}`);
-  };
-  // ===== SEND MESSAGE =====
-  // DECISION: REFACTOR - Add language detection, flow support, metadata
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-    if (!userInfo) {
-      setError("User not initialized");
-      return;
+  async function getKf() {
+    if (!kfRef.current) {
+      try {
+        kfRef.current = await KFSDK.initialize();
+      } catch (err) {
+        kfRef.current = null;
+      }
     }
-    if (!selectedFlow) {
-      setError("Flow not selected");
-      return;
-    }
+    return kfRef.current;
+  }
 
-    setError(null);
-    setIsLoading(true);
-
+  /**
+   * Extract Kissflow user information from SDK
+   * Returns: { userId, accountId, name, email }
+   */
+  async function getKissflowUserInfo() {
     try {
-      // Step 1: Validate input
-      const userInput = input.trim();
-      if (userInput.length === 0 || userInput.length > 5000) {
-        throw new Error("Input must be between 1 and 5000 characters");
+      const kf = await getKf();
+      if (!kf || !kf.account || !kf.user) {
+        throw new Error("Kissflow SDK not properly initialized");
       }
 
-      // Step 2: Detect language
-      const langResult = detectLanguage(userInput);
-      const userLanguage = langResult.mainLanguage;
-      setDetectedLanguage(userLanguage);
+      const userId = kf.user._id;
+      const accountId = kf.account._id;
+      const name = kf.user.Name || "";
+      const email = kf.user.Email || "";
 
-      // Step 3: Create user message with metadata
-      const userMsg = createUserMessage(
-        userInput,
-        selectedFlow,
-        FLOWS[selectedFlow].category,
-        systemPromptId,
-        userLanguage
-      );
-
-      logMessage(userMsg);
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-
-      // Step 4: Get response (TODO: integrate with services)
-      // For now, placeholder response
-      const assistantMsg = createAssistantMessage(
-        `[Processing "${userInput}" in ${getLanguageName(userLanguage)}...]`,
-        selectedFlow,
-        FLOWS[selectedFlow].category,
-        systemPromptId
-      );
-
-      logMessage(assistantMsg);
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      // TODO: Integrate actual processing:
-      // - Language translation (if not English)
-      // - Weaviate retrieval
-      // - OpenAI chat completion
-      // - Display results
+      return { userId, accountId, name, email };
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      console.error("❌ Error sending message:", errorMsg);
-      setError(errorMsg);
-    } finally {
-      setIsLoading(false);
+      throw new Error(`Failed to get user info: ${err.message}`);
     }
+  }
+
+  /**
+   * Send message handler with short memory (session-only)
+   * - Messages stored in React state only (not persistent)
+   * - Full conversation history passed to LLM for context
+   * - Auto-clears on page refresh or browser close
+   */
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userMessage = { text: input, sender: "user", role: "user" };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsTyping(true);
+
+    // Pass full conversation history for LLM context
+    const aiResponse = await handleQuestion(input, [...messages]);
+    setMessages((prev) => [...prev, aiResponse]);
+    setIsTyping(false);
   };
 
-  // ===== PAUSE/RESUME TASK =====
-  // DECISION: ADD - Task state management
-  const handlePauseTask = () => {
-    if (taskState && taskState.status === "RUNNING") {
-      const paused = pauseTask(taskState, messages.length);
-      setTaskState(paused);
-      console.log("⏸ Task paused:", paused);
-    }
+  const selectSuggestedQuestion = (question) => {
+    setInput(question);
   };
 
-  const handleResumeTask = () => {
-    if (taskState && taskState.status === "PAUSED") {
-      const resumed = resumeTask(taskState);
-      setTaskState(resumed);
-      console.log("▶️ Task resumed:", resumed);
-    }
-  };
+  /**
+   * Fetch user leave data from Kissflow Dataset
+   */
+  async function fetchUserLeaveData(email) {
+    try {
+      const kf = await getKf();
+      if (!kf) throw new Error("KF SDK not initialized");
 
-  // ===== RENDER =====
-  // DECISION: REBUILD UI with flow selector, system prompt info, task state display
+      const { accountId } = await getKissflowUserInfo();
+
+      // API: /dataset/2/:account_id/:dataset_id/view/:view_id/list
+      const endpoint = `/dataset/2/${accountId}/${LEAVE_DATASET_ID}/view/${LEAVE_VIEW_ID}/list?q=${email}&page_number=1&page_size=10&search_field=${LEAVE_FIELDS.Email}`;
+
+      console.log("Fetching leave data from:", endpoint);
+      const response = await kf.api(endpoint, { method: "GET" });
+
+      // Assuming response is the list of items or contains it
+      // Adjust based on actual API response structure if needed
+      return response.Data || response || [];
+    } catch (err) {
+      console.error("Error fetching leave data:", err);
+      throw err;
+    }
+  }
+
+  /**
+   * Main Case Solver Flow with Conversation Context:
+   * - Step 1: Get User Email
+   * - Step 2: Fetch Leave Data from Kissflow Dataset
+   * - Step 3: Format Response
+   */
+  async function handleQuestion(question, chatHistory) {
+    try {
+      // Get current user info
+      const userInfo = await getKissflowUserInfo();
+      if (!userInfo.email) {
+        return {
+          text: "ไม่สามารถดึงข้อมูล Email ของคุณได้ กรุณาตรวจสอบการเข้าสู่ระบบ Kissflow",
+          sender: "ai",
+          role: "assistant",
+          knowledgeBase: [],
+          kissflowData: null,
+        };
+      }
+
+      // Fetch leave data
+      const leaveDataList = await fetchUserLeaveData(userInfo.email);
+
+      // Find the record that matches the email exactly (double check)
+      const userRecord =
+        leaveDataList.find(
+          (item) => item[LEAVE_FIELDS.Email] === userInfo.email
+        ) || leaveDataList[0]; // Fallback to first item if search was exact
+
+      if (!userRecord) {
+        return {
+          text: `ไม่พบข้อมูลวันลาสำหรับ Email: ${userInfo.email}`,
+          sender: "ai",
+          role: "assistant",
+          knowledgeBase: [],
+          kissflowData: null,
+        };
+      }
+
+      // Extract balances
+      const vacation = userRecord[LEAVE_FIELDS.Vacation] || 0;
+      const personal = userRecord[LEAVE_FIELDS.Personal] || 0;
+      const sick = userRecord[LEAVE_FIELDS.Sick] || 0;
+
+      // Build context for AI
+      const context = `ข้อมูลวันลาคงเหลือของพนักงาน:
+- ลาพักร้อน: ${vacation} วัน
+- ลากิจ: ${personal} วัน
+- ลาป่วย: ${sick} วัน`;
+
+      // Generate answer using AI
+      const answer = await generateAnswerFromOpenAI(
+        context,
+        question,
+        chatHistory
+      );
+
+      return {
+        text: answer,
+        sender: "ai",
+        role: "assistant",
+        knowledgeBase: [],
+        showCreateButton: true, // Always show button for AI responses
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return {
+        text: `เกิดข้อผิดพลาดในการดึงข้อมูล: ${msg}`,
+        sender: "ai",
+        role: "assistant",
+        knowledgeBase: [],
+        showCreateButton: false,
+      };
+    }
+  }
+  // ===== Kissflow opener =====
+  async function openInKissflow(instanceData) {
+    // instanceData: Object with _id and _activity_instance_id from creation response
+    // Maps to Kissflow popup parameters: leavereqpopupinsid and leavereqpopupatvid
+
+    let popupParameters = {};
+
+    if (typeof instanceData === "object" && instanceData !== null) {
+      // Map response fields to Kissflow popup parameter names
+      if (instanceData._id) {
+        popupParameters.leavereqpopupinsid = instanceData._id;
+      }
+      if (instanceData._activity_instance_id) {
+        popupParameters.leavereqpopupatvid = instanceData._activity_instance_id;
+      }
+    }
+
+    // Check if we have any parameters
+    if (Object.keys(popupParameters).length === 0) {
+      alert("ไม่พบข้อมูล instanceID สำหรับส่งไป Kissflow");
+      return;
+    }
+
+    const kf = await getKf();
+    if (!kf) {
+      alert(
+        "ไม่สามารถเชื่อมต่อ Kissflow SDK ได้ (ต้องเปิดจาก Custom Page ภายใน Kissflow)"
+      );
+      return;
+    }
+
+    try {
+      await kf.app.page.openPopup(KF_POPUP_ID, popupParameters);
+    } catch (err) {
+      alert("เปิด popup ไม่สำเร็จ: " + (err?.message || "unknown error"));
+    }
+  }
+
+  // ===== Kissflow Create New Item =====
+  async function createNewItemInKissflow() {
+    try {
+      setIsTyping(true);
+
+      // Verify Kissflow SDK is available
+      const kf = await getKf();
+      if (!kf) {
+        setIsTyping(false);
+        alert(
+          "Kissflow SDK not available. This feature must be accessed from within Kissflow."
+        );
+        return null;
+      }
+
+      // Create item using native Kissflow SDK API
+      const result = await sendKissflowCreateRequest(
+        getKf,
+        getKissflowUserInfo
+      );
+
+      // Store created item data for future use
+      setCreatedItemData(result);
+
+      // Unlock chat immediately
+      setIsTyping(false);
+
+      // Open Kissflow popup directly (no browser alert on success)
+      if (result._id || result._activity_instance_id) {
+        // Use setTimeout to ensure UI updates before opening popup
+        setTimeout(() => {
+          openInKissflow(result).catch(() => {});
+        }, 100);
+      }
+
+      return result;
+    } catch (err) {
+      // Show error alert only on failure
+      setIsTyping(false);
+      alert(`❌ ไม่สามารถสร้าง New Item ได้:\n${err.message}`);
+      return null;
+    }
+  }
+
+  // ===== UI =====
   return (
     <div className="App">
-      {/* HEADER */}
       <div className="chat-header">
-        <div className="header-title">Kissflow AI Chat</div>
+        <div className="header-title">Nong Cassy AI Assistant</div>
         <button
           className="theme-toggle-btn"
           onClick={() => setIsDarkMode(!isDarkMode)}
           title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          aria-label="Toggle theme"
         >
           {isDarkMode ? (
             <svg
@@ -288,96 +462,50 @@ function App() {
         </button>
       </div>
 
-      {/* INITIALIZATION STATE */}
-      {!userInfo && !userInfoError && (
-        <div className="initialization-banner">
-          ⏳ Initializing application...
-        </div>
-      )}
-
-      {/* ERRORS */}
-      {userInfoError && <div className="error-banner">⚠️ {userInfoError}</div>}
-
-      {userInfo && (
-        <div className="user-info">
-          <span>
-            👤 {userInfo.name} ({userInfo.email})
-          </span>
-        </div>
-      )}
-
-      {/* FLOW SELECTOR */}
-      <div className="flow-selector">
-        <label htmlFor="flow-select">Select Flow:</label>
-        <select
-          id="flow-select"
-          value={selectedFlow || ""}
-          onChange={(e) => handleFlowChange(e.target.value)}
-          disabled={isLoading || availableFlows.length === 0}
-        >
-          {availableFlows.length === 0 ? (
-            <option value="">Loading flows...</option>
-          ) : (
-            availableFlows.map((flow) => (
-              <option key={flow.key} value={flow.key}>
-                {flow.category} - {flow.description}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
-
-      {/* TASK STATE DISPLAY */}
-      {taskState && (
-        <div className="task-state">
-          <span>{formatTaskStatus(taskState)}</span>
-          <span>{getTaskDescription(taskState)}</span>
-          {taskState.status === "RUNNING" && (
-            <button onClick={handlePauseTask} disabled={isLoading}>
-              Pause
-            </button>
-          )}
-          {taskState.status === "PAUSED" && (
-            <button onClick={handleResumeTask} disabled={isLoading}>
-              Resume
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* CHAT CONTAINER */}
       <div className="chat-container">
         <div className="chat-messages">
           {messages.map((msg, idx) => (
-            <div key={idx} className={`message-row ${msg.role}-row`}>
+            <div key={idx} className={`message-row ${msg.sender}-row`}>
               <div className="message-avatar">
-                <div className={`avatar ${msg.role}-avatar`}>
-                  {msg.role === "user" ? "U" : "AI"}
-                </div>
+                {msg.sender === "user" ? (
+                  <div className="avatar user-avatar">U</div>
+                ) : (
+                  <div className="avatar ai-avatar">AI</div>
+                )}
               </div>
-              <div className={`message-bubble ${msg.role}-message`}>
+              <div className={`message-bubble ${msg.sender}-message`}>
                 <div className="message-text">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
-                {msg.citations && msg.citations.length > 0 && (
-                  <div className="citations">
-                    <strong>Sources:</strong>
-                    <ul className="refs-inline-list">
-                      {msg.citations.map((cite, idx) => (
-                        <li key={idx} className="refs-inline-item">
-                          <span className="refs-inline-title">
-                            #{cite.index}: {cite.title}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+
+                {msg.sender === "ai" && msg.showCreateButton && (
+                  <div className="refs-inline">
+                    <div className="refs-inline-header">
+                      <strong>ต้องการสร้าง Request ใน Kissflow หรือไม่?</strong>
+                      <button
+                        type="button"
+                        className="refs-create-new"
+                        onClick={() =>
+                          createNewItemInKissflow({
+                            Case_Title: "New Case from AI Chat",
+                            Case_Type: "Customer Service",
+                            Case_Description: "Created via AI Chat",
+                            AI_Suggestions: "",
+                            Solution_Description: "",
+                          })
+                        }
+                        title="Create new case from this response"
+                      >
+                        ➕ New Item
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
           ))}
 
-          {isLoading && (
+          {isTyping && (
             <div className="typing-indicator">
               <span></span>
               <span></span>
@@ -387,10 +515,6 @@ function App() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* ERROR DISPLAY */}
-        {error && <div className="error-banner">❌ {error}</div>}
-
-        {/* INPUT FORM */}
         <form onSubmit={sendMessage} className="chat-input-form">
           <textarea
             value={input}
@@ -401,16 +525,12 @@ function App() {
                 sendMessage(e);
               }
             }}
-            placeholder="Ask your question here... (Shift+Enter for new line)"
-            disabled={isLoading || !userInfo}
-            rows={3}
+            placeholder="พิมพ์คำถามของคุณที่นี่... (Shift+Enter สำหรับบรรทัดใหม่)"
+            disabled={isTyping}
+            rows="3"
             className="chat-input-textarea"
           />
-          <button
-            type="submit"
-            disabled={isLoading || !userInfo}
-            aria-label="Send"
-          >
+          <button type="submit" disabled={isTyping} aria-label="Send">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -428,14 +548,19 @@ function App() {
           </button>
         </form>
 
-        {/* SUGGESTED QUESTIONS (flow-specific - TODO) */}
         <div className="suggested-questions-wrapper">
-          <p className="suggested-questions-label">Suggested Questions</p>
+          <p className="suggested-questions-label">แนะนำคำถาม</p>
           <div className="suggested-questions-grid">
-            {/* TODO: Load suggestions from flow config */}
-            <button type="button" className="suggested-question-btn" disabled>
-              [Questions loading...]
-            </button>
+            {SUGGESTED_QUESTIONS.map((question, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className="suggested-question-btn"
+                onClick={() => selectSuggestedQuestion(question)}
+              >
+                {question}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -443,71 +568,4 @@ function App() {
   );
 }
 
-// Error Boundary Component
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error("🔴 React Error Caught:", error);
-    console.error("Error Info:", errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div
-          style={{
-            padding: "2rem",
-            textAlign: "center",
-            fontFamily: "sans-serif",
-            backgroundColor: "#fee",
-            color: "#c33",
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <h1>⚠️ Application Error</h1>
-          <p>{this.state.error?.message || "An unexpected error occurred"}</p>
-          <pre
-            style={{
-              backgroundColor: "#f0f0f0",
-              padding: "1rem",
-              borderRadius: "0.5rem",
-              textAlign: "left",
-              maxWidth: "600px",
-              overflow: "auto",
-            }}
-          >
-            {this.state.error?.stack}
-          </pre>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              marginTop: "1rem",
-              padding: "0.5rem 1rem",
-              fontSize: "1rem",
-              cursor: "pointer",
-            }}
-          >
-            Reload Page
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-export { ErrorBoundary };
 export default App;
