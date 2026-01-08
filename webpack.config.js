@@ -7,9 +7,8 @@ const dotenv = require("dotenv");
 const env = dotenv.config().parsed || {};
 
 // Create an object to define environment variables for the client
-// Use ENV_* pattern to avoid "process is not defined" errors in browsers
 const envKeys = Object.keys(env).reduce((prev, next) => {
-  prev[`ENV_${next}`] = JSON.stringify(env[next]);
+  prev[`process.env.${next}`] = JSON.stringify(env[next]);
   return prev;
 }, {});
 
