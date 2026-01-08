@@ -24,7 +24,13 @@ import { FLOWS, listAvailableFlows } from "./config/flows";
 import {
   getUserInfoFromKissflow,
   validateKissflowAvailability,
+  getFlowFromPageVariables,
+  getSystemPromptFromPageVariables,
+  getProcessNameFromPageVariables,
+  isOpenedInKissflow,
 } from "./lib/services/kissflow";
+import { generateChatCompletion } from "./lib/services/openai";
+import { queryWeaviate } from "./lib/services/weaviate";
 import {
   detectLanguage,
   getLanguageName,
@@ -60,9 +66,15 @@ function App() {
   const [userInfo, setUserInfo] = useState(null);
   const [userInfoError, setUserInfoError] = useState(null);
 
+  // DECISION: ADD - Track if opened in Kissflow or regular browser
+  const [isKissflowContext, setIsKissflowContext] = useState(false);
+
   // DECISION: ADD - Flow selection
   const [selectedFlow, setSelectedFlow] = useState("LEAVE");
   const [availableFlows, setAvailableFlows] = useState([]);
+
+  // DECISION: ADD - Process name (from Kissflow page parameters)
+  const [processName, setProcessName] = useState("");
 
   // DECISION: ADD - System prompt (loaded from Kissflow Page variables)
   const [systemPrompt, setSystemPrompt] = useState("");
@@ -80,7 +92,7 @@ function App() {
 
   // ===== INITIALIZATION =====
   // DECISION: KEEP useEffect pattern, REFACTOR:
-  // Load user info once, validate Kissflow SDK, load flows
+  // Check if opened in Kissflow or regular browser, load data accordingly
   useEffect(() => {
     const initializeApp = async () => {
       console.log("🚀 Initializing app...");
@@ -89,37 +101,89 @@ function App() {
         // Validate configuration
         validateAllConfig();
 
-        // Check Kissflow availability
-        const kfCheck = await validateKissflowAvailability();
-        if (!kfCheck.available) {
-          throw new Error(kfCheck.error || "Kissflow SDK not available");
+        // Check if opened in Kissflow or regular browser
+        const inKissflow = await isOpenedInKissflow();
+        setIsKissflowContext(inKissflow);
+
+        if (inKissflow) {
+          // ===== KISSFLOW CONTEXT =====
+          console.log("📍 Running in Kissflow context");
+
+          // Check Kissflow availability
+          const kfCheck = await validateKissflowAvailability();
+          if (!kfCheck.available) {
+            throw new Error(kfCheck.error || "Kissflow SDK not available");
+          }
+
+          // Load user info (Kissflow only)
+          const user = await getUserInfoFromKissflow();
+          setUserInfo(user);
+          console.log("✅ User info loaded:", user);
+
+          // Load available flows
+          const flows = listAvailableFlows();
+          setAvailableFlows(flows);
+          console.log("✅ Available flows loaded:", flows.length);
+
+          // Get flow from page variables (primary source)
+          const flowFromPageVars = await getFlowFromPageVariables();
+          setSelectedFlow(flowFromPageVars);
+          setSystemPromptId(flowFromPageVars);
+          console.log("📋 Flow from page variables:", flowFromPageVars);
+
+          // Get process name from page variables
+          const processNameFromPageVars =
+            await getProcessNameFromPageVariables();
+          if (processNameFromPageVars) {
+            setProcessName(processNameFromPageVars);
+            console.log(
+              "🏷️ Process name from page variables:",
+              processNameFromPageVars
+            );
+          }
+
+          // Get system prompt from page variables (if available)
+          const promptFromPageVars = await getSystemPromptFromPageVariables();
+          if (promptFromPageVars) {
+            setSystemPrompt(promptFromPageVars);
+            console.log("📝 System prompt from page variables loaded");
+          } else {
+            // Use default system prompt for Kissflow
+            setSystemPrompt(
+              "You are a helpful AI assistant for Kissflow case management and leave requests. Provide clear, concise answers."
+            );
+          }
+
+          setUserInfoError(null);
+        } else {
+          // ===== REGULAR BROWSER CONTEXT (Testing/Demo) =====
+          console.log("🌐 Running in regular browser context (Demo mode)");
+
+          // Set demo user info
+          const demoUser = {
+            userId: "demo-user-123",
+            accountId: "demo-account",
+            name: "Demo User",
+            email: "demo@example.com",
+            loadedAt: Date.now(),
+          };
+          setUserInfo(demoUser);
+          console.log("✅ Demo user loaded (Browser mode)");
+
+          // Set default flow
+          setSelectedFlow("LEAVE");
+          setSystemPromptId("LEAVE");
+
+          // Set default process name
+          setProcessName("Demo Process");
+
+          // Set default system prompt for testing
+          setSystemPrompt(
+            "You are a helpful AI assistant. You can answer questions about human resources, leave policies, case management, and general topics. Provide clear, helpful, and concise responses."
+          );
+
+          setUserInfoError(null);
         }
-
-        // Load user info
-        const user = await getUserInfoFromKissflow();
-        setUserInfo(user);
-        console.log("✅ User info loaded:", user);
-
-        // Load available flows
-        const flows = listAvailableFlows();
-        setAvailableFlows(flows);
-        console.log("✅ Available flows loaded:", flows.length);
-
-        // Set default flow if available
-        if (flows.length > 0) {
-          const defaultFlow = flows.find((f) => f.key === "LEAVE") || flows[0];
-          setSelectedFlow(defaultFlow.key);
-          setSystemPromptId(defaultFlow.key);
-          console.log("📋 Default flow set:", defaultFlow.key);
-        }
-
-        // TODO: Load system prompt from Kissflow Page variables
-        // For now, use a default placeholder
-        setSystemPrompt(
-          "You are a helpful AI assistant for case management and leave requests."
-        );
-
-        setUserInfoError(null);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
         console.error("❌ Initialization failed:", errorMsg);
@@ -145,16 +209,6 @@ function App() {
       document.documentElement.removeAttribute("data-theme");
     }
   }, [isDarkMode]);
-
-  // ===== HANDLE FLOW CHANGE =====
-  // DECISION: ADD - When flow changes, reload system prompt
-  const handleFlowChange = (flowKey) => {
-    setSelectedFlow(flowKey);
-    setMessages([]); // Clear chat history when switching flows
-    setError(null);
-    setSystemPromptId(flowKey);
-    console.log(`📋 Switched to flow: ${flowKey}`);
-  };
   // ===== SEND MESSAGE =====
   // DECISION: REFACTOR - Add language detection, flow support, metadata
   const sendMessage = async (e) => {
@@ -171,12 +225,48 @@ function App() {
 
     setError(null);
     setIsLoading(true);
+    let assistantMsgId = null;
 
     try {
       // Step 1: Validate input
       const userInput = input.trim();
       if (userInput.length === 0 || userInput.length > 5000) {
         throw new Error("Input must be between 1 and 5000 characters");
+      }
+
+      // Step 1.5: Refresh page parameters from Kissflow (system_prompt, process_name)
+      console.log("📝 Refreshing page parameters from Kissflow...");
+      try {
+        const freshSystemPrompt = await getSystemPromptFromPageVariables();
+        const freshProcessName = await getProcessNameFromPageVariables();
+
+        console.log("📋 Fresh parameters received:", {
+          systemPrompt: freshSystemPrompt ? "loaded" : "null",
+          processName: freshProcessName ? "loaded" : "null",
+        });
+
+        if (freshSystemPrompt && freshSystemPrompt !== systemPrompt) {
+          console.log("✅ Updated system_prompt from page variables");
+          setSystemPrompt(freshSystemPrompt);
+        }
+
+        if (freshProcessName && freshProcessName !== processName) {
+          console.log(
+            "✅ Updated process_name from page variables:",
+            freshProcessName
+          );
+          setProcessName(freshProcessName);
+        } else if (freshProcessName) {
+          console.log(
+            "ℹ️ process_name from page variables is same as current:",
+            freshProcessName
+          );
+        } else {
+          console.warn("⚠️ process_name from page variables is null/empty");
+        }
+      } catch (paramErr) {
+        console.warn("⚠️ Could not refresh page parameters:", paramErr.message);
+        // Continue with existing values
       }
 
       // Step 2: Detect language
@@ -197,27 +287,128 @@ function App() {
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
 
-      // Step 4: Get response (TODO: integrate with services)
-      // For now, placeholder response
+      // Step 4: Create placeholder assistant message
       const assistantMsg = createAssistantMessage(
-        `[Processing "${userInput}" in ${getLanguageName(userLanguage)}...]`,
+        `Processing your message...`,
         selectedFlow,
         FLOWS[selectedFlow].category,
         systemPromptId
       );
+      assistantMsgId = assistantMsg.id;
 
       logMessage(assistantMsg);
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // TODO: Integrate actual processing:
-      // - Language translation (if not English)
-      // - Weaviate retrieval
-      // - OpenAI chat completion
-      // - Display results
+      // Step 5: Query Weaviate for context
+      console.log("🔍 Querying Weaviate for context...");
+      const flowConfig = FLOWS[selectedFlow];
+
+      let context = "";
+      let citations = [];
+      if (
+        flowConfig &&
+        flowConfig.weaviateClasses &&
+        flowConfig.weaviateClasses.length > 0
+      ) {
+        try {
+          const weaviateResult = await queryWeaviate({
+            flowKey: selectedFlow,
+            query: userInput,
+            limit: 5,
+          });
+          if (
+            weaviateResult &&
+            weaviateResult.documents &&
+            weaviateResult.documents.length > 0
+          ) {
+            console.log(
+              `✅ Retrieved ${weaviateResult.documents.length} documents from Weaviate`
+            );
+            context = weaviateResult.formattedContext || "";
+            citations = weaviateResult.citations || [];
+          } else {
+            console.log("ℹ️ No Weaviate results found");
+          }
+        } catch (weaviateErr) {
+          console.warn("⚠️ Weaviate query failed:", weaviateErr.message);
+          // Continue without Weaviate context
+        }
+      }
+
+      // Step 6: Get recent messages for context
+      const recentMsgs = getRecentMessages(messages, 10);
+
+      // Step 7: Format chat history for OpenAI
+      const chatHistory = recentMsgs.map((msg) => ({
+        role: msg.role === "user" ? "user" : "assistant",
+        content: msg.content,
+      }));
+
+      // Step 8: Call OpenAI with system prompt and context
+      console.log("🤖 Calling OpenAI...");
+      const prompt =
+        systemPrompt ||
+        "You are a helpful AI assistant. Provide clear, concise, and helpful responses.";
+
+      const response = await generateChatCompletion({
+        systemPrompt: prompt,
+        userMessage: userInput,
+        chatHistory: chatHistory,
+        context: context,
+      });
+
+      if (!response || !response.content) {
+        throw new Error("Empty response from OpenAI");
+      }
+
+      console.log("✅ OpenAI response received");
+
+      // Step 9: Format response with citations if available
+      let responseContent = response.content;
+      if (citations && citations.length > 0) {
+        responseContent += "\n\n**References:**\n";
+        citations.forEach((cite) => {
+          responseContent += `[${cite.index}] ${
+            cite.title
+          } (Score: ${cite.relevanceScore?.toFixed(3)})\n`;
+        });
+      }
+
+      // Step 10: Update assistant message with actual response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? {
+                ...msg,
+                content: responseContent,
+                metadata: {
+                  ...msg.metadata,
+                  tokens: response.tokensUsed?.total || 0,
+                  model: response.model || "gpt-3.5-turbo",
+                  citations: citations,
+                },
+              }
+            : msg
+        )
+      );
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
       console.error("❌ Error sending message:", errorMsg);
       setError(errorMsg);
+
+      // Update assistant message with error
+      if (assistantMsgId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: `❌ Error: ${errorMsg}`,
+                }
+              : msg
+          )
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -247,7 +438,9 @@ function App() {
     <div className="App">
       {/* HEADER */}
       <div className="chat-header">
-        <div className="header-title">Kissflow AI Chat</div>
+        <div className="header-title">
+          {processName ? `${processName} - AI Chat` : "Kissflow AI Chat"}
+        </div>
         <button
           className="theme-toggle-btn"
           onClick={() => setIsDarkMode(!isDarkMode)}
@@ -301,31 +494,11 @@ function App() {
       {userInfo && (
         <div className="user-info">
           <span>
-            👤 {userInfo.name} ({userInfo.email})
+            👤 {userInfo.name} ({userInfo.email}){" "}
+            {isKissflowContext ? "🔗 Kissflow" : "🌐 Demo"}
           </span>
         </div>
       )}
-
-      {/* FLOW SELECTOR */}
-      <div className="flow-selector">
-        <label htmlFor="flow-select">Select Flow:</label>
-        <select
-          id="flow-select"
-          value={selectedFlow || ""}
-          onChange={(e) => handleFlowChange(e.target.value)}
-          disabled={isLoading || availableFlows.length === 0}
-        >
-          {availableFlows.length === 0 ? (
-            <option value="">Loading flows...</option>
-          ) : (
-            availableFlows.map((flow) => (
-              <option key={flow.key} value={flow.key}>
-                {flow.category} - {flow.description}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
 
       {/* TASK STATE DISPLAY */}
       {taskState && (

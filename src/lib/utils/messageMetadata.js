@@ -31,6 +31,7 @@ export function createUserMessage(
   language
 ) {
   return {
+    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     role: "user",
     content,
     meta: createMessageMetadata(
@@ -51,6 +52,7 @@ export function createAssistantMessage(
   citations = []
 ) {
   const message = {
+    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     role: "assistant",
     content,
     meta: createMessageMetadata(
@@ -71,6 +73,7 @@ export function createAssistantMessage(
 
 export function createToolMessage(content, actionType, actionStatus) {
   return {
+    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     role: "tool",
     content,
     meta: {

@@ -5,56 +5,131 @@
  */
 
 // Safe getter for environment variables - handles undefined gracefully
-const getEnv = (key, defaultValue = '') => {
-  // Webpack DefinePlugin replaces ENV_* identifiers with JSON strings
-  // Use eval to safely access potentially undefined variables
+// Webpack DefinePlugin injects ENV_* variables as global identifiers at compile time
+// When webpack injects, it does: ENV_REACT_APP_OPENAI_API_KEY = "sk-proj-..."
+// We access these as if they're global variables (webpack replaces the identifier)
+const getEnv = (key, defaultValue = "") => {
   try {
-    // This will be replaced by webpack at compile time
-    const varName = `ENV_${key}`;
-    const value = typeof globalThis[varName] !== 'undefined' ? globalThis[varName] : undefined;
-    return value !== undefined ? value : defaultValue;
+    // This object will be populated by webpack at compile time
+    // Each ENV_* variable becomes a property when webpack replaces the identifier
+    // We build a lookup by trying to access __WEBPACK_ENV__ which we'll inject
+    const envVars = {
+      REACT_APP_OPENAI_API_KEY:
+        typeof ENV_REACT_APP_OPENAI_API_KEY !== "undefined"
+          ? ENV_REACT_APP_OPENAI_API_KEY
+          : undefined,
+      REACT_APP_OPENAI_CHAT_MODEL:
+        typeof ENV_REACT_APP_OPENAI_CHAT_MODEL !== "undefined"
+          ? ENV_REACT_APP_OPENAI_CHAT_MODEL
+          : undefined,
+      REACT_APP_OPENAI_EMBED_MODEL:
+        typeof ENV_REACT_APP_OPENAI_EMBED_MODEL !== "undefined"
+          ? ENV_REACT_APP_OPENAI_EMBED_MODEL
+          : undefined,
+      REACT_APP_OPENAI_TEMPERATURE:
+        typeof ENV_REACT_APP_OPENAI_TEMPERATURE !== "undefined"
+          ? ENV_REACT_APP_OPENAI_TEMPERATURE
+          : undefined,
+      REACT_APP_OPENAI_MAX_TOKENS:
+        typeof ENV_REACT_APP_OPENAI_MAX_TOKENS !== "undefined"
+          ? ENV_REACT_APP_OPENAI_MAX_TOKENS
+          : undefined,
+      REACT_APP_WEAVIATE_URL:
+        typeof ENV_REACT_APP_WEAVIATE_URL !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_URL
+          : undefined,
+      REACT_APP_WEAVIATE_API_KEY:
+        typeof ENV_REACT_APP_WEAVIATE_API_KEY !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_API_KEY
+          : undefined,
+      REACT_APP_WEAVIATE_CLASS_HR:
+        typeof ENV_REACT_APP_WEAVIATE_CLASS_HR !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_CLASS_HR
+          : undefined,
+      REACT_APP_WEAVIATE_CLASS_TOR:
+        typeof ENV_REACT_APP_WEAVIATE_CLASS_TOR !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_CLASS_TOR
+          : undefined,
+      REACT_APP_WEAVIATE_CLASS_CRM:
+        typeof ENV_REACT_APP_WEAVIATE_CLASS_CRM !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_CLASS_CRM
+          : undefined,
+      REACT_APP_WEAVIATE_CLASS_LEAVE:
+        typeof ENV_REACT_APP_WEAVIATE_CLASS_LEAVE !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_CLASS_LEAVE
+          : undefined,
+      REACT_APP_WEAVIATE_TOP_K:
+        typeof ENV_REACT_APP_WEAVIATE_TOP_K !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_TOP_K
+          : undefined,
+      REACT_APP_WEAVIATE_SCORE_THRESHOLD:
+        typeof ENV_REACT_APP_WEAVIATE_SCORE_THRESHOLD !== "undefined"
+          ? ENV_REACT_APP_WEAVIATE_SCORE_THRESHOLD
+          : undefined,
+      REACT_APP_KISSFLOW_DOMAIN:
+        typeof ENV_REACT_APP_KISSFLOW_DOMAIN !== "undefined"
+          ? ENV_REACT_APP_KISSFLOW_DOMAIN
+          : undefined,
+      REACT_APP_KISSFLOW_ACCOUNT_ID:
+        typeof ENV_REACT_APP_KISSFLOW_ACCOUNT_ID !== "undefined"
+          ? ENV_REACT_APP_KISSFLOW_ACCOUNT_ID
+          : undefined,
+      REACT_APP_KISSFLOW_APP_ID:
+        typeof ENV_REACT_APP_KISSFLOW_APP_ID !== "undefined"
+          ? ENV_REACT_APP_KISSFLOW_APP_ID
+          : undefined,
+    };
+
+    const value = envVars[key];
+    return value !== undefined && value !== null && value !== ""
+      ? value
+      : defaultValue;
   } catch (e) {
+    console.error(`⚠️ Error accessing env var ${key}:`, e.message);
     return defaultValue;
   }
 };
 
 export const OPENAI_CONFIG = {
-  apiKey: getEnv('REACT_APP_OPENAI_API_KEY', ''),
-  chatModel: getEnv('REACT_APP_OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
-  embeddingModel: getEnv('REACT_APP_OPENAI_EMBED_MODEL', 'text-embedding-3-large'),
-  temperature: parseFloat(getEnv('REACT_APP_OPENAI_TEMPERATURE', '0.2')),
-  maxTokens: parseInt(getEnv('REACT_APP_OPENAI_MAX_TOKENS', '2048'), 10),
+  apiKey: getEnv("REACT_APP_OPENAI_API_KEY", ""),
+  chatModel: getEnv("REACT_APP_OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+  embeddingModel: getEnv(
+    "REACT_APP_OPENAI_EMBED_MODEL",
+    "text-embedding-3-large"
+  ),
+  temperature: parseFloat(getEnv("REACT_APP_OPENAI_TEMPERATURE", "0.2")),
+  maxTokens: parseInt(getEnv("REACT_APP_OPENAI_MAX_TOKENS", "2048"), 10),
 };
 
 export const WEAVIATE_CONFIG = {
-  url: getEnv('REACT_APP_WEAVIATE_URL', 'http://localhost:8080'),
-  apiKey: getEnv('REACT_APP_WEAVIATE_API_KEY', ''),
+  url: getEnv("REACT_APP_WEAVIATE_URL", "http://localhost:8080"),
+  apiKey: getEnv("REACT_APP_WEAVIATE_API_KEY", ""),
   classes: {
-    HR: getEnv('REACT_APP_WEAVIATE_CLASS_HR', 'HR_Knowledge'),
-    TOR: getEnv('REACT_APP_WEAVIATE_CLASS_TOR', 'TOR_Documents'),
-    CRM: getEnv('REACT_APP_WEAVIATE_CLASS_CRM', 'CRM_Cases'),
-    LEAVE: getEnv('REACT_APP_WEAVIATE_CLASS_LEAVE', 'LeavePolicy'),
+    HR: getEnv("REACT_APP_WEAVIATE_CLASS_HR", "HR_Knowledge"),
+    TOR: getEnv("REACT_APP_WEAVIATE_CLASS_TOR", "TOR_Documents"),
+    CRM: getEnv("REACT_APP_WEAVIATE_CLASS_CRM", "CRM_Cases"),
+    LEAVE: getEnv("REACT_APP_WEAVIATE_CLASS_LEAVE", "LeavePolicy"),
   },
-  topK: parseInt(getEnv('REACT_APP_WEAVIATE_TOP_K', '8'), 10),
-  scoreThreshold: parseFloat(getEnv('REACT_APP_WEAVIATE_SCORE_THRESHOLD', '0')),
+  topK: parseInt(getEnv("REACT_APP_WEAVIATE_TOP_K", "8"), 10),
+  scoreThreshold: parseFloat(getEnv("REACT_APP_WEAVIATE_SCORE_THRESHOLD", "0")),
 };
 
 export const KISSFLOW_CONFIG = {
-  domain: getEnv('REACT_APP_KISSFLOW_DOMAIN', ''),
-  accountId: getEnv('REACT_APP_KISSFLOW_ACCOUNT_ID', ''),
-  appId: getEnv('REACT_APP_KISSFLOW_APP_ID', ''),
-  authKey: getEnv('REACT_APP_KISSFLOW_AUTH_KEY', ''),
-  authSecret: getEnv('REACT_APP_KISSFLOW_AUTH_SECRET', ''),
+  domain: getEnv("REACT_APP_KISSFLOW_DOMAIN", ""),
+  accountId: getEnv("REACT_APP_KISSFLOW_ACCOUNT_ID", ""),
+  appId: getEnv("REACT_APP_KISSFLOW_APP_ID", ""),
+  authKey: getEnv("REACT_APP_KISSFLOW_AUTH_KEY", ""),
+  authSecret: getEnv("REACT_APP_KISSFLOW_AUTH_SECRET", ""),
   processIds: {
-    HR: getEnv('REACT_APP_KISSFLOW_PROCESS_HR', ''),
-    TOR: getEnv('REACT_APP_KISSFLOW_PROCESS_TOR', ''),
-    CRM: getEnv('REACT_APP_KISSFLOW_PROCESS_CRM', ''),
-    LEAVE: getEnv('REACT_APP_KISSFLOW_PROCESS_LEAVE', ''),
+    HR: getEnv("REACT_APP_KISSFLOW_PROCESS_HR", ""),
+    TOR: getEnv("REACT_APP_KISSFLOW_PROCESS_TOR", ""),
+    CRM: getEnv("REACT_APP_KISSFLOW_PROCESS_CRM", ""),
+    LEAVE: getEnv("REACT_APP_KISSFLOW_PROCESS_LEAVE", ""),
   },
 };
 
 export const EXTERNAL_DB_CONFIG = {
-  connectionKeys: getEnv('REACT_APP_EXTERNAL_DB_CONN_KEYS', '')
+  connectionKeys: getEnv("REACT_APP_EXTERNAL_DB_CONN_KEYS", "")
     .split(",")
     .map((k) => k.trim())
     .filter((k) => k),
