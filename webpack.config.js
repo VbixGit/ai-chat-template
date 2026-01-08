@@ -12,9 +12,13 @@ const env = dotenv.config().parsed || {};
 // Exclude sensitive keys that contain API_KEY, SECRET, KEY, TOKEN, PASSWORD
 const envKeys = Object.keys(env).reduce((prev, next) => {
   const upperKey = next.toUpperCase();
-  if (!upperKey.includes('API_KEY') && !upperKey.includes('SECRET') && 
-      !upperKey.includes('KEY') && !upperKey.includes('TOKEN') && 
-      !upperKey.includes('PASSWORD')) {
+  if (
+    !upperKey.includes("API_KEY") &&
+    !upperKey.includes("SECRET") &&
+    !upperKey.includes("KEY") &&
+    !upperKey.includes("TOKEN") &&
+    !upperKey.includes("PASSWORD")
+  ) {
     prev[`ENV_${next}`] = JSON.stringify(env[next]);
   }
   return prev;
@@ -64,6 +68,11 @@ module.exports = {
       template: "public/index.html",
       filename: "404.html",
       inject: true,
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: "public/.nojekyll", to: "." },
+      ],
     }),
     new webpack.DefinePlugin(envKeys),
   ],
