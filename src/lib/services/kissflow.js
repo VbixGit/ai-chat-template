@@ -39,7 +39,7 @@ export async function getKissflowSDK() {
     try {
       kfSDKInstance = await KFSDK.initialize();
     } catch (err) {
-      console.error("❌ Kissflow SDK initialization failed:", err);
+      console.warn("⚠️ Kissflow SDK initialization failed:", err.message);
       kfSDKInstance = null;
     }
   }
