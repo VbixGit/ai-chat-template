@@ -9,8 +9,14 @@ const env = dotenv.config().parsed || {};
 
 // Create an object to define environment variables for the client
 // Use ENV_* pattern to avoid "process is not defined" errors in browsers
+// Exclude sensitive keys that contain API_KEY, SECRET, KEY, TOKEN, PASSWORD
 const envKeys = Object.keys(env).reduce((prev, next) => {
-  prev[`ENV_${next}`] = JSON.stringify(env[next]);
+  const upperKey = next.toUpperCase();
+  if (!upperKey.includes('API_KEY') && !upperKey.includes('SECRET') && 
+      !upperKey.includes('KEY') && !upperKey.includes('TOKEN') && 
+      !upperKey.includes('PASSWORD')) {
+    prev[`ENV_${next}`] = JSON.stringify(env[next]);
+  }
   return prev;
 }, {});
 
