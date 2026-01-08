@@ -51,6 +51,23 @@ import {
   getTaskDescription,
 } from "./lib/utils/taskState";
 
+// ===== UTILITY FUNCTIONS =====
+// DECISION: ADD - Map process_name to flow key
+function mapProcessNameToFlow(processName) {
+  const mapping = {
+    "HR Process": "HR",
+    "TOR Process": "TOR",
+    "Leave Request Process": "LEAVE",
+    "CRM Process": "CRM",
+  };
+  return mapping[processName] || null;
+}
+
+// DECISION: ADD - Get default system prompt when no process is selected
+function getDefaultSystemPrompt() {
+  return "You are a helpful AI assistant, similar to ChatGPT or Gemini. You can answer questions on any topic, provide explanations, help with writing, coding, analysis, and much more. Be helpful, accurate, and concise in your responses.";
+}
+
 // ===== MAIN APP COMPONENT =====
 // DECISION: COMPLETE REBUILD - Multi-flow, config-driven, language-aware
 
@@ -69,16 +86,16 @@ function App() {
   // DECISION: ADD - Track if opened in Kissflow or regular browser
   const [isKissflowContext, setIsKissflowContext] = useState(false);
 
-  // DECISION: ADD - Flow selection
-  const [selectedFlow, setSelectedFlow] = useState("LEAVE");
+  // DECISION: ADD - Flow selection (NO default - only set if process_name mapped)
+  const [selectedFlow, setSelectedFlow] = useState(null);
   const [availableFlows, setAvailableFlows] = useState([]);
 
-  // DECISION: ADD - Process name (from Kissflow page parameters)
-  const [processName, setProcessName] = useState("");
+  // DECISION: ADD - Process name (from Kissflow page parameters, null if not selected)
+  const [processName, setProcessName] = useState(null);
 
-  // DECISION: ADD - System prompt (loaded from Kissflow Page variables)
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [systemPromptId, setSystemPromptId] = useState("");
+  // DECISION: ADD - System prompt (loaded from Kissflow Page variables, null if no process)
+  const [systemPrompt, setSystemPrompt] = useState(null);
+  const [systemPromptId, setSystemPromptId] = useState(null);
 
   // DECISION: ADD - Language detection
   const [detectedLanguage, setDetectedLanguage] = useState("en");
@@ -125,33 +142,48 @@ function App() {
           setAvailableFlows(flows);
           console.log("✅ Available flows loaded:", flows.length);
 
-          // Get flow from page variables (primary source)
-          const flowFromPageVars = await getFlowFromPageVariables();
-          setSelectedFlow(flowFromPageVars);
-          setSystemPromptId(flowFromPageVars);
-          console.log("📋 Flow from page variables:", flowFromPageVars);
-
-          // Get process name from page variables
+          // Get process name from page variables - PRIMARY SOURCE
           const processNameFromPageVars =
             await getProcessNameFromPageVariables();
+
           if (processNameFromPageVars) {
+            // Process name exists - map to flow
             setProcessName(processNameFromPageVars);
             console.log(
               "🏷️ Process name from page variables:",
               processNameFromPageVars
             );
-          }
 
-          // Get system prompt from page variables (if available)
-          const promptFromPageVars = await getSystemPromptFromPageVariables();
-          if (promptFromPageVars) {
-            setSystemPrompt(promptFromPageVars);
-            console.log("📝 System prompt from page variables loaded");
+            // Map process_name to flow
+            const mappedFlow = mapProcessNameToFlow(processNameFromPageVars);
+            if (mappedFlow) {
+              setSelectedFlow(mappedFlow);
+              setSystemPromptId(mappedFlow);
+              console.log("🔗 Mapped process_name to flow:", mappedFlow);
+            } else {
+              console.warn(
+                "⚠️ Could not map process_name to flow:",
+                processNameFromPageVars
+              );
+            }
+
+            // Get system prompt from page variables
+            const promptFromPageVars =
+              await getSystemPromptFromPageVariables();
+            if (promptFromPageVars) {
+              setSystemPrompt(promptFromPageVars);
+              console.log("📝 System prompt from page variables loaded");
+            } else {
+              console.log("ℹ️ No system prompt from page variables");
+              setSystemPrompt(null);
+            }
           } else {
-            // Use default system prompt for Kissflow
-            setSystemPrompt(
-              "You are a helpful AI assistant for Kissflow case management and leave requests. Provide clear, concise answers."
-            );
+            // No process name selected yet - don't set any flow or system prompt
+            console.log("ℹ️ No process selected (process_name = null)");
+            setProcessName(null);
+            setSelectedFlow(null);
+            setSystemPromptId(null);
+            setSystemPrompt(null);
           }
 
           setUserInfoError(null);
@@ -170,17 +202,13 @@ function App() {
           setUserInfo(demoUser);
           console.log("✅ Demo user loaded (Browser mode)");
 
-          // Set default flow
-          setSelectedFlow("LEAVE");
-          setSystemPromptId("LEAVE");
-
-          // Set default process name
-          setProcessName("Demo Process");
-
-          // Set default system prompt for testing
-          setSystemPrompt(
-            "You are a helpful AI assistant. You can answer questions about human resources, leave policies, case management, and general topics. Provide clear, helpful, and concise responses."
-          );
+          // Demo mode: No process selected yet (like initial Kissflow state)
+          // User must select a process to start chatting
+          setProcessName(null);
+          setSelectedFlow(null);
+          setSystemPromptId(null);
+          setSystemPrompt(null);
+          console.log("ℹ️ Demo mode: No process selected - waiting for user selection");
 
           setUserInfoError(null);
         }
@@ -218,10 +246,6 @@ function App() {
       setError("User not initialized");
       return;
     }
-    if (!selectedFlow) {
-      setError("Flow not selected");
-      return;
-    }
 
     setError(null);
     setIsLoading(true);
@@ -235,15 +259,23 @@ function App() {
       let currentProcessName = processName;
 
       try {
-        // Get fresh flow
-        const freshFlow = await getFlowFromPageVariables();
-        if (freshFlow && freshFlow !== currentFlow) {
-          console.log("✅ [FRESH] Flow updated to:", freshFlow);
-          currentFlow = freshFlow;
-          setSelectedFlow(freshFlow);
-          setSystemPromptId(freshFlow);
-        } else if (freshFlow) {
-          console.log("ℹ️ [FRESH] Flow unchanged:", currentFlow);
+        // Get fresh process name - PRIMARY SOURCE
+        const freshName = await getProcessNameFromPageVariables();
+        if (freshName && freshName !== currentProcessName) {
+          console.log("✅ [FRESH] Process name updated to:", freshName);
+          currentProcessName = freshName;
+          setProcessName(freshName);
+
+          // Map to flow
+          const mappedFlow = mapProcessNameToFlow(freshName);
+          if (mappedFlow && mappedFlow !== currentFlow) {
+            console.log("✅ [FRESH] Flow mapped to:", mappedFlow);
+            currentFlow = mappedFlow;
+            setSelectedFlow(mappedFlow);
+            setSystemPromptId(mappedFlow);
+          }
+        } else if (freshName) {
+          console.log("ℹ️ [FRESH] Process name unchanged:", currentProcessName);
         }
 
         // Get fresh system prompt
@@ -254,26 +286,31 @@ function App() {
           setSystemPrompt(freshPrompt);
         } else if (freshPrompt) {
           console.log("ℹ️ [FRESH] System prompt unchanged");
-        }
-
-        // Get fresh process name
-        const freshName = await getProcessNameFromPageVariables();
-        if (freshName && freshName !== currentProcessName) {
-          console.log("✅ [FRESH] Process name updated to:", freshName);
-          currentProcessName = freshName;
-          setProcessName(freshName);
-        } else if (freshName) {
-          console.log("ℹ️ [FRESH] Process name unchanged:", currentProcessName);
+        } else if (!freshPrompt && currentProcessName) {
+          // Process selected but no custom prompt - will use flow default or null
+          console.log("ℹ️ [FRESH] No custom system prompt for process");
+          currentSystemPrompt = null;
+          setSystemPrompt(null);
         }
 
         console.log("📋 [FRESH] Final parameters:", {
           flow: currentFlow,
           systemPrompt: currentSystemPrompt ? "loaded" : "null",
-          processName: currentProcessName ? "loaded" : "null",
+          processName: currentProcessName,
         });
       } catch (refreshErr) {
-        console.warn("⚠️ [FRESH] Could not refresh Kissflow parameters:", refreshErr.message);
+        console.warn(
+          "⚠️ [FRESH] Could not refresh Kissflow parameters:",
+          refreshErr.message
+        );
         // Use current state values
+      }
+
+      // Check if process is selected
+      if (!currentProcessName) {
+        throw new Error(
+          "⚠️ No process selected. Please select a process in Kissflow first."
+        );
       }
 
       // Step 1: Validate input
@@ -290,9 +327,9 @@ function App() {
       // Step 3: Create user message with metadata
       const userMsg = createUserMessage(
         userInput,
-        currentFlow,
-        FLOWS[currentFlow].category,
-        currentFlow,
+        currentFlow || "DEFAULT",
+        currentFlow ? FLOWS[currentFlow].category : "general",
+        currentFlow || "DEFAULT",
         userLanguage
       );
 
@@ -303,9 +340,9 @@ function App() {
       // Step 4: Create placeholder assistant message
       const assistantMsg = createAssistantMessage(
         `Processing your message...`,
-        currentFlow,
-        FLOWS[currentFlow].category,
-        currentFlow
+        currentFlow || "DEFAULT",
+        currentFlow ? FLOWS[currentFlow].category : "general",
+        currentFlow || "DEFAULT"
       );
       assistantMsgId = assistantMsg.id;
 
@@ -315,7 +352,7 @@ function App() {
       // Step 5: Query Weaviate for context
       console.log("🔍 Querying Weaviate for context...");
       console.log("📋 Using flow for Weaviate query:", currentFlow);
-      const flowConfig = FLOWS[currentFlow];
+      const flowConfig = currentFlow ? FLOWS[currentFlow] : null;
 
       let context = "";
       let citations = [];
@@ -326,7 +363,7 @@ function App() {
       ) {
         try {
           const weaviateResult = await queryWeaviate({
-            flowKey: selectedFlow,
+            flowKey: currentFlow,
             query: userInput,
             limit: 5,
           });
@@ -360,12 +397,17 @@ function App() {
 
       // Step 8: Call OpenAI with system prompt and context
       console.log("🤖 Calling OpenAI...");
+      
+      // Determine final system prompt:
+      // 1. If currentSystemPrompt exists (from Kissflow), use it
+      // 2. If no process selected (should not reach here), use default
+      // 3. Otherwise, use default
       const finalSystemPrompt =
-        currentSystemPrompt ||
-        "You are a helpful AI assistant. Provide clear, concise, and helpful responses.";
+        currentSystemPrompt || getDefaultSystemPrompt();
 
       console.log("💬 Using system prompt:", finalSystemPrompt);
       console.log("📊 Using flow:", currentFlow);
+      console.log("📋 Using process:", currentProcessName);
 
       const response = await generateChatCompletion({
         systemPrompt: finalSystemPrompt,
@@ -456,7 +498,7 @@ function App() {
       {/* HEADER */}
       <div className="chat-header">
         <div className="header-title">
-          {processName ? `${processName} - AI Chat` : "Kissflow AI Chat"}
+          {processName ? `${processName} - AI Chat` : "⏳ Waiting for Process Selection..."}
         </div>
         <button
           className="theme-toggle-btn"
@@ -591,14 +633,14 @@ function App() {
                 sendMessage(e);
               }
             }}
-            placeholder="Ask your question here... (Shift+Enter for new line)"
-            disabled={isLoading || !userInfo}
+            placeholder={processName ? "Ask your question here... (Shift+Enter for new line)" : "Select a process first to start chatting..."}
+            disabled={isLoading || !userInfo || !processName}
             rows={3}
             className="chat-input-textarea"
           />
           <button
             type="submit"
-            disabled={isLoading || !userInfo}
+            disabled={isLoading || !userInfo || !processName}
             aria-label="Send"
           >
             <svg

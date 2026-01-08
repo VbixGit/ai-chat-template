@@ -46,10 +46,10 @@ export async function generateChatCompletion(request) {
     }
 
     // Call our API endpoint instead of OpenAI directly
-    const response = await fetch('/api/chat', {
-      method: 'POST',
+    const response = await fetch("/api/chat", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         systemPrompt,
