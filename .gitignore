@@ -10,7 +10,6 @@
 
 # production
 /build
-/docs
 
 # misc
 .DS_Store
@@ -28,3 +27,4 @@ yarn-error.log*
 .trunk
 dist_CRM
 dist_LRQ
+dist/New folder
