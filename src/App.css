@@ -315,6 +315,42 @@ body {
   cursor: not-allowed;
 }
 
+.api-key-input {
+  padding: 1rem;
+  background-color: var(--container-background);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.api-key-input label {
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.api-key-input-field {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  background-color: var(--input-background);
+  color: var(--text-color);
+  font-family: inherit;
+}
+
+.api-key-input small {
+  color: #666;
+}
+
+.api-key-input small a {
+  color: #8ab4f8;
+  text-decoration: none;
+}
+
+.api-key-input small a:hover {
+  text-decoration: underline;
+}
+
 .typing-indicator {
   display: flex;
   align-items: center;

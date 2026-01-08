@@ -16,9 +16,11 @@ export async function generateChatCompletion(request) {
     chatHistory = [],
     temperature = OPENAI_CONFIG.temperature,
     maxTokens = OPENAI_CONFIG.maxTokens,
+    apiKey, // Allow overriding API key
   } = request;
 
-  if (!OPENAI_CONFIG.apiKey) {
+  const effectiveApiKey = apiKey || OPENAI_CONFIG.apiKey;
+  if (!effectiveApiKey) {
     throw new Error("OpenAI API key not configured");
   }
 
@@ -53,7 +55,7 @@ export async function generateChatCompletion(request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_CONFIG.apiKey}`,
+        Authorization: `Bearer ${effectiveApiKey}`,
       },
       body: JSON.stringify({
         model: OPENAI_CONFIG.chatModel,

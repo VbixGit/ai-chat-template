@@ -80,6 +80,9 @@ function App() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [systemPromptId, setSystemPromptId] = useState("");
 
+  // DECISION: ADD - OpenAI API key (user input)
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+
   // DECISION: ADD - Language detection
   const [detectedLanguage, setDetectedLanguage] = useState("en");
 
@@ -222,6 +225,10 @@ function App() {
       setError("Flow not selected");
       return;
     }
+    if (!openaiApiKey) {
+      setError("OpenAI API key is required");
+      return;
+    }
 
     setError(null);
     setIsLoading(true);
@@ -355,6 +362,7 @@ function App() {
         userMessage: userInput,
         chatHistory: chatHistory,
         context: context,
+        apiKey: openaiApiKey,
       });
 
       if (!response || !response.content) {
@@ -563,6 +571,22 @@ function App() {
         {/* ERROR DISPLAY */}
         {error && <div className="error-banner">❌ {error}</div>}
 
+        {/* API KEY INPUT */}
+        {!openaiApiKey && (
+          <div className="api-key-input">
+            <label htmlFor="openai-api-key">OpenAI API Key:</label>
+            <input
+              id="openai-api-key"
+              type="password"
+              value={openaiApiKey}
+              onChange={(e) => setOpenaiApiKey(e.target.value)}
+              placeholder="Enter your OpenAI API key"
+              className="api-key-input-field"
+            />
+            <small>Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI Platform</a></small>
+          </div>
+        )}
+
         {/* INPUT FORM */}
         <form onSubmit={sendMessage} className="chat-input-form">
           <textarea
@@ -575,13 +599,13 @@ function App() {
               }
             }}
             placeholder="Ask your question here... (Shift+Enter for new line)"
-            disabled={isLoading || !userInfo}
+            disabled={isLoading || !userInfo || !openaiApiKey}
             rows={3}
             className="chat-input-textarea"
           />
           <button
             type="submit"
-            disabled={isLoading || !userInfo}
+            disabled={isLoading || !userInfo || !openaiApiKey}
             aria-label="Send"
           >
             <svg

@@ -70,9 +70,7 @@ module.exports = {
       inject: true,
     }),
     new CopyWebpackPlugin({
-      patterns: [
-        { from: "public/.nojekyll", to: "." },
-      ],
+      patterns: [{ from: "public/.nojekyll", to: "." }],
     }),
     new webpack.DefinePlugin(envKeys),
   ],
