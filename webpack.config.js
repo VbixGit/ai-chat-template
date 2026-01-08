@@ -2,6 +2,7 @@ const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const webpack = require("webpack");
 const dotenv = require("dotenv");
+const CopyWebpackPlugin = require("copy-webpack-plugin");
 
 // Load environment variables from .env file
 const env = dotenv.config().parsed || {};
@@ -18,11 +19,11 @@ module.exports = {
 
   output: {
     filename: "bundle.js",
-    path: path.resolve(__dirname, "dist"),
+    path: path.resolve(__dirname, "docs"),
   },
 
   devServer: {
-    static: "./dist",
+    static: "./docs",
   },
 
   module: {
@@ -50,7 +51,12 @@ module.exports = {
 
   plugins: [
     new HtmlWebpackPlugin({
-      template: "src/index.html",
+      template: "public/index.html",
+      inject: true,
+    }),
+    new HtmlWebpackPlugin({
+      template: "public/index.html",
+      filename: "404.html",
       inject: true,
     }),
     new webpack.DefinePlugin(envKeys),
