@@ -228,54 +228,58 @@ function App() {
     let assistantMsgId = null;
 
     try {
+      // Step 0: REFRESH all Kissflow page parameters FIRST before any processing
+      console.log("📝 [FRESH LOAD] Refreshing all parameters from Kissflow...");
+      let currentFlow = selectedFlow;
+      let currentSystemPrompt = systemPrompt;
+      let currentProcessName = processName;
+
+      try {
+        // Get fresh flow
+        const freshFlow = await getFlowFromPageVariables();
+        if (freshFlow && freshFlow !== currentFlow) {
+          console.log("✅ [FRESH] Flow updated to:", freshFlow);
+          currentFlow = freshFlow;
+          setSelectedFlow(freshFlow);
+          setSystemPromptId(freshFlow);
+        } else if (freshFlow) {
+          console.log("ℹ️ [FRESH] Flow unchanged:", currentFlow);
+        }
+
+        // Get fresh system prompt
+        const freshPrompt = await getSystemPromptFromPageVariables();
+        if (freshPrompt && freshPrompt !== currentSystemPrompt) {
+          console.log("✅ [FRESH] System prompt updated");
+          currentSystemPrompt = freshPrompt;
+          setSystemPrompt(freshPrompt);
+        } else if (freshPrompt) {
+          console.log("ℹ️ [FRESH] System prompt unchanged");
+        }
+
+        // Get fresh process name
+        const freshName = await getProcessNameFromPageVariables();
+        if (freshName && freshName !== currentProcessName) {
+          console.log("✅ [FRESH] Process name updated to:", freshName);
+          currentProcessName = freshName;
+          setProcessName(freshName);
+        } else if (freshName) {
+          console.log("ℹ️ [FRESH] Process name unchanged:", currentProcessName);
+        }
+
+        console.log("📋 [FRESH] Final parameters:", {
+          flow: currentFlow,
+          systemPrompt: currentSystemPrompt ? "loaded" : "null",
+          processName: currentProcessName ? "loaded" : "null",
+        });
+      } catch (refreshErr) {
+        console.warn("⚠️ [FRESH] Could not refresh Kissflow parameters:", refreshErr.message);
+        // Use current state values
+      }
+
       // Step 1: Validate input
       const userInput = input.trim();
       if (userInput.length === 0 || userInput.length > 5000) {
         throw new Error("Input must be between 1 and 5000 characters");
-      }
-
-      // Step 1.5: Refresh page parameters from Kissflow (flow, system_prompt, process_name)
-      console.log("📝 Refreshing page parameters from Kissflow...");
-      let effectiveFlow = selectedFlow;
-      let effectiveSystemPrompt = systemPrompt;
-      let effectiveProcessName = processName;
-
-      try {
-        // Get fresh flow
-        const flowFromPageVars = await getFlowFromPageVariables();
-        if (flowFromPageVars && flowFromPageVars !== selectedFlow) {
-          console.log("✅ Updated flow from page variables:", flowFromPageVars);
-          effectiveFlow = flowFromPageVars;
-          setSelectedFlow(flowFromPageVars);
-          setSystemPromptId(flowFromPageVars);
-        }
-
-        // Get fresh system prompt
-        const promptFromPageVars = await getSystemPromptFromPageVariables();
-        if (promptFromPageVars && promptFromPageVars !== systemPrompt) {
-          console.log("✅ Updated system_prompt from page variables");
-          effectiveSystemPrompt = promptFromPageVars;
-          setSystemPrompt(promptFromPageVars);
-        }
-
-        // Get fresh process name
-        const nameFromPageVars = await getProcessNameFromPageVariables();
-        if (nameFromPageVars && nameFromPageVars !== processName) {
-          console.log(
-            "✅ Updated process_name from page variables:",
-            nameFromPageVars
-          );
-          effectiveProcessName = nameFromPageVars;
-          setProcessName(nameFromPageVars);
-        }
-
-        console.log("📋 Fresh parameters:", {
-          flow: effectiveFlow,
-          systemPrompt: effectiveSystemPrompt ? "loaded" : "null",
-          processName: effectiveProcessName ? "loaded" : "null",
-        });
-      } catch (paramErr) {
-        console.warn("⚠️ Could not refresh page parameters:", paramErr.message);
       }
 
       // Step 2: Detect language
@@ -286,9 +290,9 @@ function App() {
       // Step 3: Create user message with metadata
       const userMsg = createUserMessage(
         userInput,
-        selectedFlow,
-        FLOWS[selectedFlow].category,
-        systemPromptId,
+        currentFlow,
+        FLOWS[currentFlow].category,
+        currentFlow,
         userLanguage
       );
 
@@ -299,9 +303,9 @@ function App() {
       // Step 4: Create placeholder assistant message
       const assistantMsg = createAssistantMessage(
         `Processing your message...`,
-        selectedFlow,
-        FLOWS[selectedFlow].category,
-        systemPromptId
+        currentFlow,
+        FLOWS[currentFlow].category,
+        currentFlow
       );
       assistantMsgId = assistantMsg.id;
 
@@ -310,8 +314,8 @@ function App() {
 
       // Step 5: Query Weaviate for context
       console.log("🔍 Querying Weaviate for context...");
-      console.log("📋 Using flow for Weaviate query:", selectedFlow);
-      const flowConfig = FLOWS[selectedFlow];
+      console.log("📋 Using flow for Weaviate query:", currentFlow);
+      const flowConfig = FLOWS[currentFlow];
 
       let context = "";
       let citations = [];
@@ -357,11 +361,11 @@ function App() {
       // Step 8: Call OpenAI with system prompt and context
       console.log("🤖 Calling OpenAI...");
       const finalSystemPrompt =
-        systemPrompt ||
+        currentSystemPrompt ||
         "You are a helpful AI assistant. Provide clear, concise, and helpful responses.";
 
       console.log("💬 Using system prompt:", finalSystemPrompt);
-      console.log("📊 Using flow:", selectedFlow);
+      console.log("📊 Using flow:", currentFlow);
 
       const response = await generateChatCompletion({
         systemPrompt: finalSystemPrompt,
