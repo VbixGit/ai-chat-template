@@ -86,15 +86,15 @@ function App() {
   // DECISION: ADD - Track if opened in Kissflow or regular browser
   const [isKissflowContext, setIsKissflowContext] = useState(false);
 
-  // DECISION: ADD - Flow selection (NO default - only set if process_name mapped)
+  // DECISION: ADD - Flow selection (null if no process selected)
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [availableFlows, setAvailableFlows] = useState([]);
 
   // DECISION: ADD - Process name (from Kissflow page parameters, null if not selected)
   const [processName, setProcessName] = useState(null);
 
-  // DECISION: ADD - System prompt (loaded from Kissflow Page variables, null if no process)
-  const [systemPrompt, setSystemPrompt] = useState(null);
+  // DECISION: ADD - System prompt (default general prompt, override if process selected)
+  const [systemPrompt, setSystemPrompt] = useState(getDefaultSystemPrompt());
   const [systemPromptId, setSystemPromptId] = useState(null);
 
   // DECISION: ADD - Language detection
@@ -168,8 +168,7 @@ function App() {
             }
 
             // Get system prompt from page variables
-            const promptFromPageVars =
-              await getSystemPromptFromPageVariables();
+            const promptFromPageVars = await getSystemPromptFromPageVariables();
             if (promptFromPageVars) {
               setSystemPrompt(promptFromPageVars);
               console.log("📝 System prompt from page variables loaded");
@@ -178,12 +177,13 @@ function App() {
               setSystemPrompt(null);
             }
           } else {
-            // No process name selected yet - don't set any flow or system prompt
+            // No process name selected yet - use default system prompt
             console.log("ℹ️ No process selected (process_name = null)");
             setProcessName(null);
             setSelectedFlow(null);
             setSystemPromptId(null);
-            setSystemPrompt(null);
+            setSystemPrompt(getDefaultSystemPrompt());
+            console.log("📝 Using default system prompt for general chat");
           }
 
           setUserInfoError(null);
@@ -203,12 +203,12 @@ function App() {
           console.log("✅ Demo user loaded (Browser mode)");
 
           // Demo mode: No process selected yet (like initial Kissflow state)
-          // User must select a process to start chatting
+          // User can chat with general topics using default system prompt
           setProcessName(null);
           setSelectedFlow(null);
           setSystemPromptId(null);
-          setSystemPrompt(null);
-          console.log("ℹ️ Demo mode: No process selected - waiting for user selection");
+          setSystemPrompt(getDefaultSystemPrompt());
+          console.log("ℹ️ Demo mode: Using default system prompt for general chat");
 
           setUserInfoError(null);
         }
@@ -306,11 +306,10 @@ function App() {
         // Use current state values
       }
 
-      // Check if process is selected
+      // Note: currentProcessName can be null (general chat mode)
+      // Only log if process exists
       if (!currentProcessName) {
-        throw new Error(
-          "⚠️ No process selected. Please select a process in Kissflow first."
-        );
+        console.log("ℹ️ No process selected - using general chat mode");
       }
 
       // Step 1: Validate input
@@ -397,13 +396,12 @@ function App() {
 
       // Step 8: Call OpenAI with system prompt and context
       console.log("🤖 Calling OpenAI...");
-      
+
       // Determine final system prompt:
       // 1. If currentSystemPrompt exists (from Kissflow), use it
       // 2. If no process selected (should not reach here), use default
       // 3. Otherwise, use default
-      const finalSystemPrompt =
-        currentSystemPrompt || getDefaultSystemPrompt();
+      const finalSystemPrompt = currentSystemPrompt || getDefaultSystemPrompt();
 
       console.log("💬 Using system prompt:", finalSystemPrompt);
       console.log("📊 Using flow:", currentFlow);
@@ -498,7 +496,7 @@ function App() {
       {/* HEADER */}
       <div className="chat-header">
         <div className="header-title">
-          {processName ? `${processName} - AI Chat` : "⏳ Waiting for Process Selection..."}
+          {processName ? `${processName} - AI Chat` : "🤖 AI Chat Assistant"}
         </div>
         <button
           className="theme-toggle-btn"
@@ -633,14 +631,14 @@ function App() {
                 sendMessage(e);
               }
             }}
-            placeholder={processName ? "Ask your question here... (Shift+Enter for new line)" : "Select a process first to start chatting..."}
-            disabled={isLoading || !userInfo || !processName}
+            placeholder="Ask your question here... (Shift+Enter for new line)"
+            disabled={isLoading || !userInfo}
             rows={3}
             className="chat-input-textarea"
           />
           <button
             type="submit"
-            disabled={isLoading || !userInfo || !processName}
+            disabled={isLoading || !userInfo}
             aria-label="Send"
           >
             <svg
