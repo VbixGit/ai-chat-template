@@ -69,7 +69,19 @@ export const FLOWS = {
     name: "Case Management",
     description: "Case management system with knowledge base",
     dataSourcesAllowed: ["WEAVIATE", "KISSFLOW"],
-    weaviateClasses: ["CRM_Cases"],
+    weaviateClasses: ["CaseSolutionKnowledgeBase"],
+    weaviateFields: `
+      caseNumber
+      caseTitle
+      caseType
+      caseDescription
+      solutionDescription
+      instanceID
+      _additional {
+        certainty
+      }
+    `,
+    translateQueryToThai: true,
     kissflowProcessIds: ["CRM_PROCESS"],
     actionsAllowed: ["ANSWER_ONLY", "CREATE", "READ", "QUERY", "UPDATE"],
     requiresSystemPrompt: true,

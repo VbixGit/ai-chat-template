@@ -143,6 +143,21 @@ function processWeaviateResults(data, scoreThreshold, className) {
         },
         score: item._additional?.score || 0,
       }));
+  } else if (className === "CaseSolutionKnowledgeBase") {
+    return results
+      .filter((item) => item._additional?.certainty >= scoreThreshold)
+      .map((item, idx) => ({
+        id: item.instanceID || item.caseNumber || `doc_${idx}`,
+        content: item.solutionDescription || item.caseDescription || "",
+        title: item.caseTitle || "Untitled",
+        metadata: {
+          caseNumber: item.caseNumber,
+          caseType: item.caseType,
+          caseDescription: item.caseDescription,
+          solutionDescription: item.solutionDescription,
+        },
+        score: item._additional?.certainty || 0,
+      }));
   } else {
     return results
       .filter((item) => 1 - item._additional.distance >= scoreThreshold)
