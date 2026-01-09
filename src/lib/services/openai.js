@@ -84,6 +84,11 @@ export async function generateChatCompletion(request) {
 export async function generateEmbedding(request) {
   const { text, model = OPENAI_CONFIG.embeddingModel } = request;
 
+  console.log(
+    "🔑 OpenAI API Key status:",
+    OPENAI_CONFIG.apiKey ? "SET" : "NOT SET"
+  );
+
   if (!OPENAI_CONFIG.apiKey) {
     throw new Error("OpenAI API key not configured");
   }
