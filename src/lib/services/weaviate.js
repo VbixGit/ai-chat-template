@@ -7,7 +7,10 @@
  */
 
 import { WEAVIATE_CONFIG } from "../../config/env";
-import { getWeaviateClassesForFlow } from "../../config/flows";
+import {
+  getWeaviateClassesForFlow,
+  getWeaviateFieldsForFlow,
+} from "../../config/flows";
 import { generateEmbedding } from "./openai";
 
 export async function queryWeaviate(retrieval) {
@@ -37,8 +40,16 @@ export async function queryWeaviate(retrieval) {
       throw new Error(`No Weaviate class configured for ${flowKey} flow`);
     }
 
+    // Get Weaviate fields for this flow
+    const fields = getWeaviateFieldsForFlow(flowKey);
+
     // Build GraphQL query
-    const graphqlQuery = buildWeaviateGraphQLQuery(className, embedding, limit);
+    const graphqlQuery = buildWeaviateGraphQLQuery(
+      className,
+      embedding,
+      limit,
+      fields
+    );
 
     // Execute query
     const response = await fetch(`${WEAVIATE_CONFIG.url}/v1/graphql`, {
@@ -57,7 +68,7 @@ export async function queryWeaviate(retrieval) {
     }
 
     const data = await response.json();
-    const documents = processWeaviateResults(data, scoreThreshold);
+    const documents = processWeaviateResults(data, scoreThreshold, className);
     const formatted = formatContextFromDocuments(documents);
 
     console.log(`✅ Retrieved ${documents.length} documents from Weaviate`);
@@ -74,7 +85,7 @@ export async function queryWeaviate(retrieval) {
   }
 }
 
-function buildWeaviateGraphQLQuery(className, embedding, limit) {
+function buildWeaviateGraphQLQuery(className, embedding, limit, fields) {
   return `
     {
       Get {
@@ -84,30 +95,41 @@ function buildWeaviateGraphQLQuery(className, embedding, limit) {
           }
           limit: ${limit}
         ) {
-          _additional {
-            distance
-          }
-          content
-          title
-          metadata
+          ${fields}
         }
       }
     }
   `;
 }
 
-function processWeaviateResults(data, scoreThreshold) {
+function processWeaviateResults(data, scoreThreshold, className) {
   const results = data.data?.Get?.[Object.keys(data.data.Get)[0]] || [];
 
-  return results
-    .filter((item) => 1 - item._additional.distance >= scoreThreshold)
-    .map((item, idx) => ({
-      id: `doc_${idx}`,
-      content: item.content || "",
-      title: item.title || "Untitled",
-      metadata: item.metadata || {},
-      score: 1 - item._additional.distance,
-    }));
+  if (className === "HRMixlangRAG") {
+    return results
+      .filter((item) => item._additional?.certainty >= scoreThreshold)
+      .map((item, idx) => ({
+        id: item.instanceID || `doc_${idx}`,
+        content: item.documentDetail || "",
+        title: item.requesterName || "Untitled",
+        metadata: {
+          description: item.documentDescription,
+          email: item.requesterEmail,
+          topic: item.documentTopic,
+        },
+        score: item._additional?.certainty || 0,
+      }));
+  } else {
+    return results
+      .filter((item) => 1 - item._additional.distance >= scoreThreshold)
+      .map((item, idx) => ({
+        id: `doc_${idx}`,
+        content: item.content || "",
+        title: item.title || "Untitled",
+        metadata: item.metadata || {},
+        score: 1 - item._additional.distance,
+      }));
+  }
 }
 
 function formatContextFromDocuments(documents) {

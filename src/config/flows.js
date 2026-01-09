@@ -11,7 +11,18 @@ export const FLOWS = {
     name: "Human Resources",
     description: "Organization and HR policy questions",
     dataSourcesAllowed: ["WEAVIATE"],
-    weaviateClasses: ["HR_Knowledge"],
+    weaviateClasses: ["HRMixlangRAG"],
+    weaviateFields: `
+      instanceID
+      documentDetail
+      requesterName
+      documentDescription
+      requesterEmail
+      documentTopic
+      _additional {
+        certainty
+      }
+    `,
     kissflowProcessIds: [],
     actionsAllowed: ["ANSWER_ONLY"],
     requiresSystemPrompt: true,
@@ -44,9 +55,7 @@ export const FLOWS = {
     description: "Case management system with knowledge base",
     dataSourcesAllowed: ["WEAVIATE", "KISSFLOW"],
     weaviateClasses: ["CRM_Cases"],
-    kissflowProcessIds: [
-      "CRM_PROCESS",
-    ],
+    kissflowProcessIds: ["CRM_PROCESS"],
     actionsAllowed: ["ANSWER_ONLY", "CREATE", "READ", "QUERY", "UPDATE"],
     requiresSystemPrompt: true,
     responseLanguage: "user-detected",
@@ -62,9 +71,7 @@ export const FLOWS = {
     description: "Leave request handling and policy Q&A",
     dataSourcesAllowed: ["WEAVIATE", "KISSFLOW"],
     weaviateClasses: ["LeavePolicy"],
-    kissflowProcessIds: [
-      "LEAVE_PROCESS",
-    ],
+    kissflowProcessIds: ["LEAVE_PROCESS"],
     actionsAllowed: ["ANSWER_ONLY", "CREATE", "READ", "QUERY"],
     requiresSystemPrompt: true,
     responseLanguage: "user-detected",
@@ -96,6 +103,21 @@ export function isActionAllowedForFlow(flowKey, action) {
 export function getWeaviateClassesForFlow(flowKey) {
   const flow = getFlowConfig(flowKey);
   return flow.weaviateClasses;
+}
+
+export function getWeaviateFieldsForFlow(flowKey) {
+  const flow = getFlowConfig(flowKey);
+  return (
+    flow.weaviateFields ||
+    `
+    _additional {
+      distance
+    }
+    content
+    title
+    metadata
+  `
+  );
 }
 
 export function getKissflowProcessIdsForFlow(flowKey) {
