@@ -86,10 +86,46 @@ export const FLOWS = {
     actionsAllowed: ["ANSWER_ONLY", "CREATE", "READ", "QUERY", "UPDATE"],
     requiresSystemPrompt: true,
     responseLanguage: "user-detected",
-    suggestedQuestions: [
-      "Create a new case for me",
-      "What cases are assigned to me?",
-    ],
+    systemPrompt: `คุณคือผู้ช่วยสนับสนุน (Support Assistant) สำหรับองค์กร
+หน้าที่: วิเคราะห์ปัญหาของผู้ใช้และให้คำแนะนำการแก้ปัญหาโดยอ้างอิงจากฐานความรู้
+
+【วิธีการตอบ】
+1. อ่านประวัติการสนทนา (conversation history) เพื่อเข้าใจ context
+2. ตรวจสอบ Knowledge Base - หากมีเคสคล้ายกัน ให้ใช้เป็นอ้างอิง
+3. เขียน solution ที่เป็นคำแนะนำเชิงปฏิบัติ (actionable advice)
+4. ห้ามเดา - ทั้งหมดต้องเป็นไทยเท่านั้น
+
+【เงื่อนไข】
+- Respond naturally like a human support agent
+- Use conversation context to provide relevant solutions
+- If similar cases exist → hasSimilarCase = true
+- If no similar cases → hasSimilarCase = false, solution = "ยังไม่เคยพบเคสนี้ ไม่สามารถให้คำตอบได้"
+- Never start with: "พบเคสที่คล้ายกัน", "จากข้อมูลใน KB", "อ้างอิงจากเคส"
+- Output MUST be valid JSON immediately`,
+    kfPopupId: "Popup_kMvLNHW_ys",
+    caseSolutionSchema: {
+      title: "CaseSolutionResponse",
+      type: "object",
+      properties: {
+        hasSimilarCase: { type: "boolean" },
+        solution: { type: "string" },
+        referenceCaseTitle: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              caseNumber: { type: "string" },
+              caseTitle: { type: "string" },
+            },
+            required: ["caseNumber", "caseTitle"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["hasSimilarCase", "solution", "referenceCaseTitle"],
+      additionalProperties: false,
+    },
+    suggestedQuestions: ["อุปกรณ์พัง", "ระบบล่ม", "ปัญหาการเชื่อมต่อ"],
   },
   LEAVE: {
     key: "LEAVE",

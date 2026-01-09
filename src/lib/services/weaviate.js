@@ -107,6 +107,18 @@ function buildWeaviateGraphQLQuery(className, embedding, limit, fields) {
   `;
 }
 
+const transformToCleanedKB = (results = []) => {
+  return results.map((item) => ({
+    caseNumber: item.caseNumber || "",
+    caseTitle: item.caseTitle || "",
+    caseType: item.caseType || "",
+    caseDescription: item.caseDescription || "",
+    solutionDescription: item.solutionDescription || "",
+    instanceID: item.instanceID || "",
+    certainty: item._additional?.certainty || 0,
+  }));
+};
+
 function processWeaviateResults(data, scoreThreshold, className) {
   const results = data.data?.Get?.[Object.keys(data.data.Get)[0]] || [];
 
@@ -144,8 +156,9 @@ function processWeaviateResults(data, scoreThreshold, className) {
         score: item._additional?.score || 0,
       }));
   } else if (className === "CaseSolutionKnowledgeBase") {
-    return results
-      .filter((item) => item._additional?.certainty >= scoreThreshold)
+    const cleanedResults = transformToCleanedKB(results);
+    return cleanedResults
+      .filter((item) => item.certainty >= scoreThreshold)
       .map((item, idx) => ({
         id: item.instanceID || item.caseNumber || `doc_${idx}`,
         content: item.solutionDescription || item.caseDescription || "",
@@ -156,7 +169,7 @@ function processWeaviateResults(data, scoreThreshold, className) {
           caseDescription: item.caseDescription,
           solutionDescription: item.solutionDescription,
         },
-        score: item._additional?.certainty || 0,
+        score: item.certainty,
       }));
   } else {
     return results
