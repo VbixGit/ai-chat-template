@@ -38,7 +38,22 @@ export const FLOWS = {
     name: "Terms of Reference",
     description: "Terms of Reference and document search",
     dataSourcesAllowed: ["WEAVIATE"],
-    weaviateClasses: ["TOR_Documents"],
+    weaviateClasses: ["TORForPOC"],
+    weaviateFields: `
+      instanceID
+      documentTopic
+      documentDescription
+      documentDetail
+      documentPage
+      documentPageStart
+      documentPageEnd
+      totalPages
+      source
+      gdriveFileId
+      createdAt
+      _additional { score id }
+    `,
+    translateQueryToThai: true,
     kissflowProcessIds: [],
     actionsAllowed: ["ANSWER_ONLY"],
     requiresSystemPrompt: true,
@@ -118,6 +133,11 @@ export function getWeaviateFieldsForFlow(flowKey) {
     metadata
   `
   );
+}
+
+export function getTranslateQueryToThaiForFlow(flowKey) {
+  const flow = getFlowConfig(flowKey);
+  return flow.translateQueryToThai || false;
 }
 
 export function getKissflowProcessIdsForFlow(flowKey) {

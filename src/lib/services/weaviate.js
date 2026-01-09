@@ -10,8 +10,9 @@ import { WEAVIATE_CONFIG } from "../../config/env";
 import {
   getWeaviateClassesForFlow,
   getWeaviateFieldsForFlow,
+  getTranslateQueryToThaiForFlow,
 } from "../../config/flows";
-import { generateEmbedding } from "./openai";
+import { generateEmbedding, translateToThai } from "./openai";
 
 export async function queryWeaviate(retrieval) {
   const {
@@ -28,8 +29,12 @@ export async function queryWeaviate(retrieval) {
   try {
     console.log(`🔍 Querying Weaviate for ${flowKey} flow...`);
 
+    // Translate query to Thai if required for this flow
+    const shouldTranslate = getTranslateQueryToThaiForFlow(flowKey);
+    const queryToEmbed = shouldTranslate ? await translateToThai(query) : query;
+
     // Get embedding for query
-    const embeddingResult = await generateEmbedding({ text: query });
+    const embeddingResult = await generateEmbedding({ text: queryToEmbed });
     const embedding = embeddingResult.embedding;
 
     // Get Weaviate class for this flow
@@ -118,6 +123,25 @@ function processWeaviateResults(data, scoreThreshold, className) {
           topic: item.documentTopic,
         },
         score: item._additional?.certainty || 0,
+      }));
+  } else if (className === "TORForPOC") {
+    return results
+      .filter((item) => item._additional?.score >= scoreThreshold)
+      .map((item, idx) => ({
+        id: item.instanceID || `doc_${idx}`,
+        content: item.documentDetail || "",
+        title: item.documentTopic || "Untitled",
+        metadata: {
+          description: item.documentDescription,
+          page: item.documentPage,
+          pageStart: item.documentPageStart,
+          pageEnd: item.documentPageEnd,
+          totalPages: item.totalPages,
+          source: item.source,
+          gdriveFileId: item.gdriveFileId,
+          createdAt: item.createdAt,
+        },
+        score: item._additional?.score || 0,
       }));
   } else {
     return results
