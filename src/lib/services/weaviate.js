@@ -6,7 +6,7 @@
  * Made flow-aware and generalized for all flows
  */
 
-import { WEAVIATE_CONFIG } from "../../config/env";
+import { WEAVIATE_CONFIG, OPENAI_CONFIG } from "../../config/env";
 import {
   getWeaviateClassesForFlow,
   getWeaviateFieldsForFlow,
@@ -63,6 +63,9 @@ export async function queryWeaviate(retrieval) {
         "Content-Type": "application/json",
         ...(WEAVIATE_CONFIG.apiKey && {
           Authorization: `Bearer ${WEAVIATE_CONFIG.apiKey}`,
+        }),
+        ...(OPENAI_CONFIG.apiKey && {
+          "X-OpenAI-Api-Key": OPENAI_CONFIG.apiKey,
         }),
       },
       body: JSON.stringify({ query: graphqlQuery }),
