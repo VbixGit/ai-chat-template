@@ -96,13 +96,23 @@ export async function createKissflowItem(request, flowKey, userInfo) {
 
     console.log(`📤 Creating Kissflow item in ${flowKey}...`);
 
-    // TODO: Implement actual Kissflow creation API call
-    console.log("🔄 TODO: Implement Kissflow creation");
+    const processName = processId;
+    const apiEndpoint = `/process/2/${userInfo.accountId}/${processName}/create/submit`;
+    const options = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request.data || {}),
+    };
+
+    const result = await kf.api(apiEndpoint, options);
 
     return {
-      id: `item_${Date.now()}`,
+      id: result.id || `item_${Date.now()}`,
       flowKey,
       created: true,
+      result,
     };
   } catch (error) {
     console.error(`❌ Failed to create Kissflow item:`, error);
@@ -129,6 +139,36 @@ export async function queryKissflowDataset(datasetQuery, userInfo) {
     };
   } catch (error) {
     console.error("❌ Failed to query Kissflow dataset:", error);
+    throw error;
+  }
+}
+
+export async function fetchUserLeaveData(email) {
+  try {
+    const userInfo = await getUserInfoFromKissflow();
+    const { accountId } = userInfo;
+    const flow = getFlowConfig("LEAVE");
+    const datasetId = flow.leaveDatasetId;
+    const viewId = flow.leaveViewId;
+    const emailField = flow.leaveFields.Email;
+
+    const kf = await getKissflowSDK();
+    if (!kf) {
+      throw new Error("Kissflow SDK not initialized");
+    }
+
+    const endpoint = `/dataset/2/${accountId}/${datasetId}/view/${viewId}/list?q=${email}&page_number=1&page_size=10&search_field=${emailField}`;
+    const options = {
+      method: "GET",
+    };
+
+    console.log(`📊 Fetching leave data for ${email}...`);
+    const result = await kf.api(endpoint, options);
+    console.log("✅ Leave data fetched");
+
+    return result.data || [];
+  } catch (error) {
+    console.error("❌ Failed to fetch leave data:", error);
     throw error;
   }
 }
