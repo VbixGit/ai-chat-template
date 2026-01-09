@@ -7,9 +7,11 @@ const dotenv = require("dotenv");
 const env = dotenv.config().parsed || {};
 
 // Create an object to define environment variables for the client
-// Use ENV_* pattern to avoid "process is not defined" errors in browsers
+// Use REACT_APP_* pattern directly for client-side access
 const envKeys = Object.keys(env).reduce((prev, next) => {
-  prev[`ENV_${next}`] = JSON.stringify(env[next]);
+  if (next.startsWith("REACT_APP_")) {
+    prev[next] = JSON.stringify(env[next]);
+  }
   return prev;
 }, {});
 

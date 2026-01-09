@@ -5,18 +5,14 @@
  */
 
 // Safe getter for environment variables - handles undefined gracefully
-// Webpack DefinePlugin injects ENV_* variables as global identifiers at compile time
-// When webpack injects, it does: ENV_REACT_APP_OPENAI_API_KEY = "sk-proj-..."
-// We access these as if they're global variables (webpack replaces the identifier)
+// Webpack DefinePlugin injects REACT_APP_* variables as global identifiers at compile time
 const getEnv = (key, defaultValue = "") => {
   try {
-    // This object will be populated by webpack at compile time
-    // Each ENV_* variable becomes a property when webpack replaces the identifier
-    // We build a lookup by trying to access __WEBPACK_ENV__ which we'll inject
+    // Webpack DefinePlugin injects variables directly
     const envVars = {
       REACT_APP_OPENAI_API_KEY:
-        typeof ENV_REACT_APP_OPENAI_API_KEY !== "undefined"
-          ? ENV_REACT_APP_OPENAI_API_KEY
+        typeof REACT_APP_OPENAI_API_KEY !== "undefined"
+          ? REACT_APP_OPENAI_API_KEY
           : undefined,
       REACT_APP_OPENAI_CHAT_MODEL:
         typeof ENV_REACT_APP_OPENAI_CHAT_MODEL !== "undefined"

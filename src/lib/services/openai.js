@@ -62,7 +62,9 @@ export async function generateChatCompletion(request) {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(`OpenAI API error: ${error.error?.message || response.statusText}`);
+      throw new Error(
+        `OpenAI API error: ${error.error?.message || response.statusText}`
+      );
     }
 
     const data = await response.json();
