@@ -15,64 +15,64 @@ const getEnv = (key, defaultValue = "") => {
           ? REACT_APP_OPENAI_API_KEY
           : undefined,
       REACT_APP_OPENAI_CHAT_MODEL:
-        typeof ENV_REACT_APP_OPENAI_CHAT_MODEL !== "undefined"
-          ? ENV_REACT_APP_OPENAI_CHAT_MODEL
+        typeof REACT_APP_OPENAI_CHAT_MODEL !== "undefined"
+          ? REACT_APP_OPENAI_CHAT_MODEL
           : undefined,
       REACT_APP_OPENAI_EMBED_MODEL:
-        typeof ENV_REACT_APP_OPENAI_EMBED_MODEL !== "undefined"
-          ? ENV_REACT_APP_OPENAI_EMBED_MODEL
+        typeof REACT_APP_OPENAI_EMBED_MODEL !== "undefined"
+          ? REACT_APP_OPENAI_EMBED_MODEL
           : undefined,
       REACT_APP_OPENAI_TEMPERATURE:
-        typeof ENV_REACT_APP_OPENAI_TEMPERATURE !== "undefined"
-          ? ENV_REACT_APP_OPENAI_TEMPERATURE
+        typeof REACT_APP_OPENAI_TEMPERATURE !== "undefined"
+          ? REACT_APP_OPENAI_TEMPERATURE
           : undefined,
       REACT_APP_OPENAI_MAX_TOKENS:
-        typeof ENV_REACT_APP_OPENAI_MAX_TOKENS !== "undefined"
-          ? ENV_REACT_APP_OPENAI_MAX_TOKENS
+        typeof REACT_APP_OPENAI_MAX_TOKENS !== "undefined"
+          ? REACT_APP_OPENAI_MAX_TOKENS
           : undefined,
       REACT_APP_WEAVIATE_URL:
-        typeof ENV_REACT_APP_WEAVIATE_URL !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_URL
+        typeof REACT_APP_WEAVIATE_URL !== "undefined"
+          ? REACT_APP_WEAVIATE_URL
           : undefined,
       REACT_APP_WEAVIATE_API_KEY:
-        typeof ENV_REACT_APP_WEAVIATE_API_KEY !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_API_KEY
+        typeof REACT_APP_WEAVIATE_API_KEY !== "undefined"
+          ? REACT_APP_WEAVIATE_API_KEY
           : undefined,
       REACT_APP_WEAVIATE_CLASS_HR:
-        typeof ENV_REACT_APP_WEAVIATE_CLASS_HR !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_CLASS_HR
+        typeof REACT_APP_WEAVIATE_CLASS_HR !== "undefined"
+          ? REACT_APP_WEAVIATE_CLASS_HR
           : undefined,
       REACT_APP_WEAVIATE_CLASS_TOR:
-        typeof ENV_REACT_APP_WEAVIATE_CLASS_TOR !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_CLASS_TOR
+        typeof REACT_APP_WEAVIATE_CLASS_TOR !== "undefined"
+          ? REACT_APP_WEAVIATE_CLASS_TOR
           : undefined,
       REACT_APP_WEAVIATE_CLASS_CRM:
-        typeof ENV_REACT_APP_WEAVIATE_CLASS_CRM !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_CLASS_CRM
+        typeof REACT_APP_WEAVIATE_CLASS_CRM !== "undefined"
+          ? REACT_APP_WEAVIATE_CLASS_CRM
           : undefined,
       REACT_APP_WEAVIATE_CLASS_LEAVE:
-        typeof ENV_REACT_APP_WEAVIATE_CLASS_LEAVE !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_CLASS_LEAVE
+        typeof REACT_APP_WEAVIATE_CLASS_LEAVE !== "undefined"
+          ? REACT_APP_WEAVIATE_CLASS_LEAVE
           : undefined,
       REACT_APP_WEAVIATE_TOP_K:
-        typeof ENV_REACT_APP_WEAVIATE_TOP_K !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_TOP_K
+        typeof REACT_APP_WEAVIATE_TOP_K !== "undefined"
+          ? REACT_APP_WEAVIATE_TOP_K
           : undefined,
       REACT_APP_WEAVIATE_SCORE_THRESHOLD:
-        typeof ENV_REACT_APP_WEAVIATE_SCORE_THRESHOLD !== "undefined"
-          ? ENV_REACT_APP_WEAVIATE_SCORE_THRESHOLD
+        typeof REACT_APP_WEAVIATE_SCORE_THRESHOLD !== "undefined"
+          ? REACT_APP_WEAVIATE_SCORE_THRESHOLD
           : undefined,
       REACT_APP_KISSFLOW_DOMAIN:
-        typeof ENV_REACT_APP_KISSFLOW_DOMAIN !== "undefined"
-          ? ENV_REACT_APP_KISSFLOW_DOMAIN
+        typeof REACT_APP_KISSFLOW_DOMAIN !== "undefined"
+          ? REACT_APP_KISSFLOW_DOMAIN
           : undefined,
       REACT_APP_KISSFLOW_ACCOUNT_ID:
-        typeof ENV_REACT_APP_KISSFLOW_ACCOUNT_ID !== "undefined"
-          ? ENV_REACT_APP_KISSFLOW_ACCOUNT_ID
+        typeof REACT_APP_KISSFLOW_ACCOUNT_ID !== "undefined"
+          ? REACT_APP_KISSFLOW_ACCOUNT_ID
           : undefined,
       REACT_APP_KISSFLOW_APP_ID:
-        typeof ENV_REACT_APP_KISSFLOW_APP_ID !== "undefined"
-          ? ENV_REACT_APP_KISSFLOW_APP_ID
+        typeof REACT_APP_KISSFLOW_APP_ID !== "undefined"
+          ? REACT_APP_KISSFLOW_APP_ID
           : undefined,
     };
 
