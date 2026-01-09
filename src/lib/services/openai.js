@@ -45,35 +45,37 @@ export async function generateChatCompletion(request) {
       });
     }
 
-    // Call our API endpoint instead of OpenAI directly
-    const response = await fetch("/api/chat", {
+    // Call OpenAI API directly
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_CONFIG.apiKey}`,
       },
       body: JSON.stringify({
-        systemPrompt,
-        userMessage,
-        context,
-        chatHistory,
+        model: OPENAI_CONFIG.chatModel,
+        messages,
         temperature,
-        maxTokens,
+        max_tokens: maxTokens,
       }),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(`API error: ${error.error || response.statusText}`);
+      throw new Error(`OpenAI API error: ${error.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    const tokensUsed = data.usage?.total_tokens || 0;
+    const model = data.model;
 
     console.log("✅ API response received");
 
     return {
-      content: data.content,
-      tokensUsed: data.tokensUsed,
-      model: data.model,
+      content,
+      tokensUsed,
+      model,
     };
   } catch (error) {
     console.error("❌ API call failed:", error);
@@ -148,7 +150,7 @@ export async function translateToThai(text) {
         Authorization: `Bearer ${OPENAI_CONFIG.apiKey}`,
       },
       body: JSON.stringify({
-        model: OPENAI_CONFIG.model,
+        model: OPENAI_CONFIG.chatModel,
         messages: [
           {
             role: "system",

@@ -14,10 +14,12 @@ async function main() {
   console.log("Connecting to Weaviate...");
   try {
     const client = await weaviate.connectToWeaviateCloud(
-      process.env.WEAVIATE_ENDPOINT,
+      process.env.REACT_APP_WEAVIATE_URL,
       {
-        authCredentials: new weaviate.ApiKey(process.env.WEAVIATE_API_KEY),
-        headers: { "X-OpenAI-Api-Key": process.env.OPENAI_API_KEY },
+        authCredentials: new weaviate.ApiKey(
+          process.env.REACT_APP_WEAVIATE_API_KEY
+        ),
+        headers: { "X-OpenAI-Api-Key": process.env.REACT_APP_OPENAI_API_KEY },
       }
     );
 
@@ -25,7 +27,7 @@ async function main() {
     console.log("Successfully connected to Weaviate.");
 
     const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.REACT_APP_OPENAI_API_KEY,
     });
 
     app.post("/api/ask", async (req, res) => {
@@ -167,6 +169,52 @@ async function main() {
         res.status(500).json({
           error: "Failed to create Kissflow item",
           details: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    // ===== Embedding API Endpoint =====
+    app.post("/api/embed", async (req, res) => {
+      const { text } = req.body;
+
+      if (!text) {
+        return res.status(400).json({ error: "Text is required" });
+      }
+
+      try {
+        console.log(`📊 Generating embedding for text...`);
+        const { embedding } = await generateQuestionEmbedding(openai, text);
+        res.json({ embedding });
+      } catch (error) {
+        console.error("❌ Embedding generation failed:", error);
+        res.status(500).json({
+          error: "Failed to generate embedding",
+          details: error.message,
+        });
+      }
+    });
+
+    // ===== Translation API Endpoint =====
+    app.post("/api/translate", async (req, res) => {
+      const { text, targetLanguage = "th" } = req.body;
+
+      if (!text) {
+        return res.status(400).json({ error: "Text is required" });
+      }
+
+      try {
+        console.log(`🌐 Translating text to ${targetLanguage}...`);
+        const translatedText = await translateText(
+          openai,
+          text,
+          targetLanguage
+        );
+        res.json({ translatedText });
+      } catch (error) {
+        console.error("❌ Translation failed:", error);
+        res.status(500).json({
+          error: "Failed to translate text",
+          details: error.message,
         });
       }
     });
@@ -324,6 +372,35 @@ Based on the above information, generate the Kissflow case data in JSON format.`
       AI_Suggestions: answer.substring(0, 300),
       Solution_Description: answer.substring(0, 500),
     };
+  }
+}
+
+async function translateText(openai, text, targetLanguage) {
+  if (!text || text.trim() === "") return text;
+
+  try {
+    console.log(`🌐 Translating to ${targetLanguage}...`);
+
+    const response = await openai.chat.completions.create({
+      model: process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional translator. Translate the following text to ${targetLanguage}. Only return the translated text, no explanations.`,
+        },
+        { role: "user", content: text },
+      ],
+      temperature: 0,
+      max_tokens: 1000,
+    });
+
+    const translated = response.choices[0].message.content.trim();
+    console.log("✅ Translation completed");
+
+    return translated;
+  } catch (error) {
+    console.error("❌ Translation failed:", error);
+    return text;
   }
 }
 
